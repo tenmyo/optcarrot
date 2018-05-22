@@ -1,0 +1,11 @@
+---
+Language:        Cpp
+BasedOnStyle:    LLVM
+IncludeCategories:
+  - Regex:           '^"optcarrot'
+    Priority:        2
+  - Regex:           '^(<|"(gtest|gmock)/)'
+    Priority:        3
+  - Regex:           '.*'
+    Priority:        1
+...
