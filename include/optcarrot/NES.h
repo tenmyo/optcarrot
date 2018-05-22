@@ -1,16 +1,26 @@
 #ifndef OPTCARROT_NES_H
 #define OPTCARROT_NES_H
-#include "optcarrot/config.h"
 #include <memory>
 
 namespace optcarrot {
+class Config;
+
+/// NES emulation main
 class NES {
 public:
   static constexpr auto kFPS = 60;
-  explicit NES(int argc, const char *argv[]) : conf_(new Config(argc, argv)) {}
+
+  explicit NES(std::shared_ptr<Config> conf) : conf_(std::move(conf)) {}
+  ~NES() noexcept;
+  // disallow copy
+  NES(const NES &) = delete;
+  NES &operator=(const NES &) = delete;
+  // allow move
+  NES(NES &&) noexcept = default;
+  NES &operator=(NES &&) noexcept = default;
 
 private:
-  std::unique_ptr<Config> conf_;
+  std::shared_ptr<Config> conf_;
 #if 0
     def initialize(conf = ARGV)
       @video, @audio, @input = Driver.load(@conf)

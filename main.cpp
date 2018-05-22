@@ -1,5 +1,5 @@
 #include "optcarrot.h"
-#include "optcarrot/config.h"
-#include "optcarrot/driver.h"
-#include "optcarrot/nes.h"
+#include "optcarrot/Config.h"
+#include "optcarrot/Driver.h"
+#include "optcarrot/NES.h"
 int main(int /*argc*/, const char ** /*argv*/) { return 0; }

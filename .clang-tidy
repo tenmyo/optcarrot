@@ -1,5 +1,7 @@
 Checks: '*'
-HeaderFilterRegex: '.*'
+WarningsAsErrors: ''
+HeaderFilterRegex: 'optcarrot*'
+AnalyzeTemporaryDtors: false
 FormatStyle: 'file'
 CheckOptions:
   # Type

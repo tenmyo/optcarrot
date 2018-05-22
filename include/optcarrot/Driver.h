@@ -1,13 +1,15 @@
 #ifndef OPTCARROT_DRIVER_H
 #define OPTCARROT_DRIVER_H
 
+#include "optcarrot/Driver/SDL2Video.h"
+#include "optcarrot/Driver/Video.h"
+
 namespace optcarrot {
+
+/// A manager class for drivers (user frontend)
 class Driver {
 public:
 #if 0
-module Optcarrot
-#A manager class for drivers(user frontend)
-  module Driver
     DRIVER_DB = {
       video: {
         sdl2:  :SDL2Video,
@@ -62,41 +64,6 @@ module Optcarrot
         end
         selected
       end
-    end
-  end
-
-#A base class of video output driver
-  class Video
-    WIDTH = 256
-    TV_WIDTH = 292
-    HEIGHT = 224
-
-    def initialize(conf)
-      @conf = conf
-      @palette_rgb = @conf.nestopia_palette ? Palette.nestopia_palette : Palette.defacto_palette
-      @palette = [*0..4096] # dummy palette
-      init
-    end
-
-    attr_reader :palette
-
-    def init
-      @times = []
-    end
-
-    def dispose
-    end
-
-    def tick(_output)
-      @times << Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      @times.shift if @times.size > 10
-      @times.size < 2 ? 0 : ((@times.last - @times.first) / (@times.size - 1)) ** -1
-    end
-
-    def change_window_size(_scale)
-    end
-
-    def on_resize(_width, _height)
     end
   end
 

@@ -24,13 +24,19 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib)
 
 # Build library
+include(FindPkgConfig)
+pkg_search_module(SDL2 REQUIRED sdl2 sdl>=2.0.0)
+pkg_search_module(SDL2IMAGE REQUIRED SDL2_image SDL_image>=2.0.0)
+
 file(GLOB_RECURSE SRCS "source/*.cpp" "source/*.h" "include/*.h")
 add_library(${PROJECT_NAME} SHARED ${SRCS})
 target_compile_options(${PROJECT_NAME}
   PRIVATE
   ${DEFAULT_COMPILE_OPTIONS}
 )
-target_include_directories(${PROJECT_NAME} PRIVATE "${PROJECT_SOURCE_DIR}/include")
+target_include_directories(${PROJECT_NAME} PUBLIC "${PROJECT_SOURCE_DIR}/include")
+target_include_directories(${PROJECT_NAME} PUBLIC "${SDL2_INCLUDE_DIRS}" "${SDL2IMAGE_INCLUDE_DIRS}")
+target_link_libraries(${PROJECT_NAME} "${SDL2_LIBRARIES}" "${SDL2IMAGE_LIBRARIES}")
 clang_format(${PROJECT_NAME} ${SRCS})
 #clang_tidy(${PROJECT_NAME})
 

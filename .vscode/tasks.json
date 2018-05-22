@@ -46,7 +46,10 @@
           "type": "shell",
           "command": "/usr/share/clang/run-clang-tidy.py",
           "args": [
-            "-p", "${workspaceRoot}/build"
+            "-p", "${workspaceRoot}/build",
+            "-fix", "-format",
+            "-j", "4",
+            "-quiet"
           ],
           "group": "test",
           "presentation": {
