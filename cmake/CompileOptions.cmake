@@ -15,6 +15,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang")
     -Weverything
     -Wno-c++98-compat
     -Wno-c++98-compat-pedantic
+    -Wno-padded
     )
 elseif(CMAKE_C_COMPILER_ID MATCHES "GNU")
   set(DEFAULT_COMPILE_OPTIONS ${DEFAULT_COMPILE_OPTIONS}
