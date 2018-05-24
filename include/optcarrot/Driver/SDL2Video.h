@@ -1,15 +1,34 @@
 #ifndef OPTCARROT_DRIVER_SDL2VIDEO_H
 #define OPTCARROT_DRIVER_SDL2VIDEO_H
 
+#include "optcarrot/Driver/SDL2.h"
 #include "optcarrot/Driver/Video.h"
-#include <SDL.h>
+#include <array>
+#include <cstdint>
 
 namespace optcarrot {
 
 /// Video output driver for SDL2
 class SDL2Video : public Video {
+public:
+  explicit SDL2Video(std::shared_ptr<Config> conf) : Video(std::move(conf)) {
+    if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
+      SDL_LogCritical(SDL_LOG_CATEGORY_ERROR,
+                      "SDL_InitSubSystem(SDL_INIT_VIDEO) failed: %s",
+                      SDL_GetError());
+    }
+  }
+  ~SDL2Video() noexcept override;
+  // disallow copy
+  SDL2Video(const SDL2Video &) = delete;
+  SDL2Video &operator=(const SDL2Video &) = delete;
+  // allow move
+  SDL2Video(SDL2Video &&) noexcept = default;
+  SDL2Video &operator=(SDL2Video &&) noexcept = default;
+
 private:
-  void init() override { auto ret = SDL_InitSubSystem(SDL_INIT_VIDEO); }
+  SDL2 sdl2_;
+  std::array<uint32_t, kWidth * kHeight> buf_{};
 #if 0
   class SDL2Video < Video
     def init

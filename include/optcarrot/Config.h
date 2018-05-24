@@ -1,10 +1,9 @@
 #ifndef OPTCARROT_CONFIG_H
 #define OPTCARROT_CONFIG_H
-#include <memory>
 namespace optcarrot {
 
 /// config manager and logger
-class Config : public std::enable_shared_from_this<Config> {
+class Config {
 public:
   explicit Config(int /*argc*/, const char * /*unused*/ []) {}
 #if 0

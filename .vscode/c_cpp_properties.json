@@ -9,14 +9,15 @@
                 "limitSymbolsToIncludedHeaders": true
             },
             "includePath": [
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/**",
+                "/usr/include/SDL2"
             ],
             "defines": [],
             "compilerPath": "/bin/clang",
             "cStandard": "c11",
             "cppStandard": "c++17",
             "intelliSenseMode": "clang-x64",
-            "compileCommands": "${workspaceRoot}/build/compile_commands.json"
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json"
         }
     ],
     "version": 4

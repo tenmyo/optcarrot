@@ -3,61 +3,65 @@
     // for the documentation about the tasks.json format
     "version": "2.0.0",
     "tasks": [
-        {
-            "label": "ninja build",
-            "type": "shell",
-            "command": "ninja",
-            "args": [
-              "-C", "${workspaceRoot}/build"
-            ],
-            "group": {
-              "kind": "build",
-              "isDefault": true
-            },
-            "presentation": {
-              "echo": true,
-              "reveal": "always",
-              "focus": false,
-              "panel": "shared"
-            }
+      {
+        "label": "ninja build",
+        "type": "shell",
+        "command": "ninja",
+        "args": [
+          "-C",
+          "${workspaceRoot}/build"
+        ],
+        "group": {
+          "kind": "build",
+          "isDefault": true
         },
-        {
-          "label": "valgrind",
-          "type": "shell",
-          "command": "valgrind",
-          "args": [
-            "--leak-check=full",
-            "--show-leak-kinds=all",
-            "${workspaceRoot}/build/bin/optcarrot_cpp"
-          ],
-          "group": {
-            "kind": "test",
-            "isDefault": true
-          },
-          "presentation": {
-            "echo": true,
-            "reveal": "always",
-            "focus": false,
-            "panel": "shared"
-          }
+        "presentation": {
+          "echo": true,
+          "reveal": "always",
+          "focus": true,
+          "panel": "shared"
+        }
       },
       {
-          "label": "tidy",
-          "type": "shell",
-          "command": "/usr/share/clang/run-clang-tidy.py",
-          "args": [
-            "-p", "${workspaceRoot}/build",
-            "-fix", "-format",
-            "-j", "4",
-            "-quiet"
-          ],
-          "group": "test",
-          "presentation": {
-            "echo": true,
-            "reveal": "silent",
-            "focus": false,
-            "panel": "shared"
-          }
+        "label": "valgrind",
+        "type": "shell",
+        "command": "valgrind",
+        "args": [
+          "--leak-check=full",
+          "--show-leak-kinds=all",
+          "${workspaceRoot}/build/bin/optcarrot_cpp"
+        ],
+        "group": {
+          "kind": "test",
+          "isDefault": true
+        },
+        "presentation": {
+          "echo": true,
+          "reveal": "always",
+          "focus": false,
+          "panel": "shared"
+        }
       },
+      {
+        "label": "tidy",
+        "type": "shell",
+        "command": "/usr/share/clang/run-clang-tidy.py",
+        "args": [
+          "-p",
+          "${workspaceRoot}/build",
+          "-fix",
+          "-format",
+          "-j",
+          "4",
+          "-quiet"
+        ],
+        "group": "test",
+        "presentation": {
+          "echo": true,
+          "reveal": "silent",
+          "focus": false,
+          "panel": "shared"
+        }
+      }
     ]
-}
+  }

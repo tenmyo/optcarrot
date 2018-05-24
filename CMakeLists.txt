@@ -23,11 +23,12 @@ project(${MY_PROJECT_NAME}
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib)
 
-# Build library
+# Find SDL
 include(FindPkgConfig)
 pkg_search_module(SDL2 REQUIRED sdl2 sdl>=2.0.0)
 pkg_search_module(SDL2IMAGE REQUIRED SDL2_image SDL_image>=2.0.0)
 
+# Build library
 file(GLOB_RECURSE SRCS "source/*.cpp" "source/*.h" "include/*.h")
 add_library(${PROJECT_NAME} SHARED ${SRCS})
 target_compile_options(${PROJECT_NAME}
@@ -35,18 +36,18 @@ target_compile_options(${PROJECT_NAME}
   ${DEFAULT_COMPILE_OPTIONS}
 )
 target_include_directories(${PROJECT_NAME} PUBLIC "${PROJECT_SOURCE_DIR}/include")
-target_include_directories(${PROJECT_NAME} PUBLIC "${SDL2_INCLUDE_DIRS}" "${SDL2IMAGE_INCLUDE_DIRS}")
+target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${SDL2_INCLUDE_DIRS}" "${SDL2IMAGE_INCLUDE_DIRS}")
 target_link_libraries(${PROJECT_NAME} "${SDL2_LIBRARIES}" "${SDL2IMAGE_LIBRARIES}")
-clang_format(${PROJECT_NAME} ${SRCS})
+#clang_format(${PROJECT_NAME} ${SRCS})
 #clang_tidy(${PROJECT_NAME})
 
 # Build executable
 add_executable(${PROJECT_NAME}-exe main.cpp)
-target_link_libraries(${PROJECT_NAME}-exe ${PROJECT_NAME})
 set_target_properties(${PROJECT_NAME}-exe PROPERTIES OUTPUT_NAME ${PROJECT_NAME})
-target_include_directories(${PROJECT_NAME}-exe PRIVATE "${PROJECT_SOURCE_DIR}/include")
-clang_format(${PROJECT_NAME}-exe main.cpp)
-clang_tidy(${PROJECT_NAME}-exe)
+target_compile_options(${PROJECT_NAME}-exe PRIVATE ${DEFAULT_COMPILE_OPTIONS})
+target_link_libraries(${PROJECT_NAME}-exe ${PROJECT_NAME})
+#clang_format(${PROJECT_NAME}-exe main.cpp)
+#clang_tidy(${PROJECT_NAME}-exe)
 
 
 # Build tests if option enabled

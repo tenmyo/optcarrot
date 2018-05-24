@@ -12,10 +12,8 @@ public:
   static constexpr auto kTvWidth = 292;
   static constexpr auto kHeight = 224;
 
-  explicit Video(std::shared_ptr<Config> conf) : conf_(std::move(conf)) {
-    init();
-  }
-  virtual ~Video() = default;
+  explicit Video(std::shared_ptr<Config> conf) : conf_(std::move(conf)) {}
+  virtual ~Video();
   // disallow copy
   Video(const Video &) = delete;
   Video &operator=(const Video &) = delete;
@@ -25,7 +23,6 @@ public:
 
 private:
   std::shared_ptr<Config> conf_;
-  virtual void init() {}
 #if 0
     def initialize(conf)
       @conf = conf
