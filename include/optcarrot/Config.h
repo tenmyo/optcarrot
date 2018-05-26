@@ -9,26 +9,6 @@ public:
 #if 0
 
     OPTIONS = {
-      optimization: {
-        opt_ppu: {
-          type: :opts,
-          desc: "select PPU optimizations",
-          candidates: PPU::OptimizedCodeBuilder::OPTIONS,
-          default: nil,
-        },
-        opt_cpu: {
-          type: :opts,
-          desc: "select CPU optimizations",
-          candidates: CPU::OptimizedCodeBuilder::OPTIONS,
-          default: nil,
-        },
-        opt: { shortcut: %w(--opt-ppu=all --opt-cpu=all) },
-        list_opts: { type: :info, desc: "list available optimizations" },
-        dump_ppu: { type: :info, desc: "print generated PPU source code" },
-        dump_cpu: { type: :info, desc: "print generated CPU source code" },
-        load_ppu: { type: "FILE", desc: "use generated PPU source code" },
-        load_cpu: { type: "FILE", desc: "use generated CPU source code" },
-      },
       emulation: {
         sprite_limit:      { type: :switch, desc: "enable/disable sprite limit", default: false },
         frames:            { type: :int, desc: "execute N frames (0 = no limit)", default: 0, aliases: [:f, :frame] },

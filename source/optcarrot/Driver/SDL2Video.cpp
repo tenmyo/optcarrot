@@ -5,6 +5,7 @@
 #include "optcarrot/Driver/SDL2Video.h"
 
 // Local/Private headers
+#include "optcarrot/Driver/SDL2.h"
 
 // External headers
 #include <SDL.h>
@@ -22,31 +23,32 @@ struct SDL2Video::Impl {
                                 SDL_WINDOW_RESIZABLE),
                SDL_DestroyWindow),
         Renderer(nullptr, nullptr), Texture(nullptr, nullptr) {
-    if (Window == nullptr) {
+    if (this->Window == nullptr) {
       SDL_LogCritical(SDL_LOG_CATEGORY_ERROR, "SDL_CreateWindow failed: %s",
                       SDL_GetError());
       throw std::runtime_error(SDL_GetError());
     }
 
-    Renderer = decltype(Renderer)(SDL_CreateRenderer(Window.get(), -1, 0),
-                                  SDL_DestroyRenderer);
-    if (Renderer == nullptr) {
+    this->Renderer = decltype(this->Renderer)(
+        SDL_CreateRenderer(this->Window.get(), -1, 0), SDL_DestroyRenderer);
+    if (this->Renderer == nullptr) {
       SDL_LogCritical(SDL_LOG_CATEGORY_ERROR, "SDL_CreateRenderer failed: %s",
                       SDL_GetError());
       throw std::runtime_error(SDL_GetError());
     }
 
     SDL_SetHint("SDL_RENDER_SCALE_QUALITY", "linear");
-    if (SDL_RenderSetLogicalSize(Renderer.get(), kTvWidth, kHeight) != 0) {
+    if (SDL_RenderSetLogicalSize(this->Renderer.get(), kTvWidth, kHeight) !=
+        0) {
       SDL_LogError(SDL_LOG_CATEGORY_ERROR,
                    "SDL_RenderSetLogicalSize failed: %s", SDL_GetError());
     }
 
-    Texture = decltype(Texture)(
-        SDL_CreateTexture(Renderer.get(), SDL_PIXELFORMAT_ARGB32,
+    this->Texture = decltype(this->Texture)(
+        SDL_CreateTexture(this->Renderer.get(), SDL_PIXELFORMAT_ARGB32,
                           SDL_TEXTUREACCESS_STREAMING, kWidth, kHeight),
         SDL_DestroyTexture);
-    if (Renderer == nullptr) {
+    if (this->Renderer == nullptr) {
       SDL_LogCritical(SDL_LOG_CATEGORY_ERROR, "SDL_CreateRenderer failed: %s",
                       SDL_GetError());
       throw std::runtime_error(SDL_GetError());
@@ -58,7 +60,7 @@ struct SDL2Video::Impl {
   std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> Window;
   std::unique_ptr<SDL_Renderer, decltype(&SDL_DestroyRenderer)> Renderer;
   std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> Texture;
-  constexpr static const char *Tiles[100] = {
+  constexpr static const char *kTitles[100] = {
       "optcarrot (0 fps)",  "optcarrot (1 fps)",  "optcarrot (2 fps)",
       "optcarrot (3 fps)",  "optcarrot (4 fps)",  "optcarrot (5 fps)",
       "optcarrot (6 fps)",  "optcarrot (7 fps)",  "optcarrot (8 fps)",
@@ -104,52 +106,49 @@ SDL2Video::SDL2Video(std::shared_ptr<Config> conf)
 SDL2Video::~SDL2Video() = default;
 
 #if 0
-  class SDL2Video < Video
-    def init
-      @palette = @palette_rgb.map do |r, g, b|
-        0xff000000 | (r << 16) | (g << 8) | b
-      end
-    end
-
-    def change_window_size(scale)
-      if scale
-        SDL2.SetWindowFullscreen(@window, 0)
-        SDL2.SetWindowSize(@window, TV_WIDTH * scale, HEIGHT * scale)
-      elsif SDL2.GetWindowFlags(@window) & SDL2::WINDOW_FULLSCREEN_DESKTOP != 0
-        SDL2.SetWindowFullscreen(@window, 0)
-      else
-        SDL2.SetWindowFullscreen(@window, SDL2::WINDOW_FULLSCREEN_DESKTOP)
-      end
-    end
-
-    def tick(colors)
-      prev_ticks = @ticks_log[0]
-      wait = prev_ticks + 1000 - SDL2.GetTicks * NES::FPS
-      @ticks_log.rotate!(1)
-      if wait > 0
-        SDL2.Delay(wait / NES::FPS)
-        @ticks_log[0] = prev_ticks + 1000
-      else
-        @ticks_log[0] = SDL2.GetTicks * NES::FPS
-      end
-      elapsed = (@ticks_log[0] - @ticks_log[1]) / (@ticks_log.size - 1)
-      fps = (NES::FPS * 1000 + elapsed / 2) / elapsed
-      fps = 99 if fps > 99
-
-      SDL2.SetWindowTitle(@window, @titles[fps])
-
-      Driver.cutoff_overscan(colors)
-      Driver.show_fps(colors, fps, @palette) if @conf.show_fps
-
-      @buf.write_array_of_uint32(colors)
-
-      SDL2.UpdateTexture(@texture, nil, @buf, WIDTH * 4)
-      SDL2.RenderClear(@renderer)
-      SDL2.RenderCopy(@renderer, @texture, nil, nil)
-      SDL2.RenderPresent(@renderer)
-
-      fps
-    end
+def init
+  @palette = @palette_rgb.map do |r, g, b|
+    0xff000000 | (r << 16) | (g << 8) | b
   end
+end
+
+def change_window_size(scale)
+  if scale
+    SDL2.SetWindowFullscreen(@window, 0)
+    SDL2.SetWindowSize(@window, TV_WIDTH * scale, HEIGHT * scale)
+  elsif SDL2.GetWindowFlags(@window) & SDL2::WINDOW_FULLSCREEN_DESKTOP != 0
+    SDL2.SetWindowFullscreen(@window, 0)
+  else
+    SDL2.SetWindowFullscreen(@window, SDL2::WINDOW_FULLSCREEN_DESKTOP)
+  end
+end
+
+def tick(colors)
+  prev_ticks = @ticks_log[0]
+  wait = prev_ticks + 1000 - SDL2.GetTicks * NES::FPS
+  @ticks_log.rotate!(1)
+  if wait > 0
+    SDL2.Delay(wait / NES::FPS)
+    @ticks_log[0] = prev_ticks + 1000
+  else
+    @ticks_log[0] = SDL2.GetTicks * NES::FPS
+  end
+  elapsed = (@ticks_log[0] - @ticks_log[1]) / (@ticks_log.size - 1)
+  fps = (NES::FPS * 1000 + elapsed / 2) / elapsed
+  fps = 99 if fps > 99
+
+  SDL2.SetWindowTitle(@window, @titles[fps])
+
+  Driver.cutoff_overscan(colors)
+  Driver.show_fps(colors, fps, @palette) if @conf.show_fps
+
+  @buf.write_array_of_uint32(colors)
+
+  SDL2.UpdateTexture(@texture, nil, @buf, WIDTH * 4)
+  SDL2.RenderClear(@renderer)
+  SDL2.RenderCopy(@renderer, @texture, nil, nil)
+  SDL2.RenderPresent(@renderer)
+
+  fps
 end
 #endif

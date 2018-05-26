@@ -1,7 +1,6 @@
 #ifndef OPTCARROT_DRIVER_SDL2VIDEO_H
 #define OPTCARROT_DRIVER_SDL2VIDEO_H
 
-#include "optcarrot/Driver/SDL2.h"
 #include "optcarrot/Driver/Video.h"
 #include <memory>
 
