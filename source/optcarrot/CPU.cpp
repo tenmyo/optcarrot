@@ -12,41 +12,17 @@
 // System headers
 #include <array>
 #include <cstdint>
+#include <functional>
 
 using namespace optcarrot;
 
 using UNKNOWN = unsigned;
+using address_t = uint16_t;
 
 class CPU::Impl {
 public:
   explicit Impl() = default;
-  void reset() {
-    // registers
-    this->reg_a = 0;
-    this->reg_x = 0;
-    this->reg_y = 0;
-    this->reg_sp = 0xfd;
-    this->reg_pc = 0xfffc;
-    // P register
-    this->reg_p_nz = 1;
-    this->reg_p_c = 0;
-    this->reg_p_v = 0;
-    this->reg_p_i = 0x04;
-    this->reg_p_d = 0;
-    // clocks
-    this->clk = 0;
-    this->clk_total = 0;
-    // RAM
-    this->ram.fill(0xff);
-    // memory mappings by self
-#if 0
-  add_mappings(0x0000..0x07ff, @ram, @ram.method(:[]=))
-  add_mappings(0x0800..0x1fff, method(:peek_ram), method(:poke_ram))
-  add_mappings(0x2000..0xffff, method(:peek_nop), nil)
-  add_mappings(0xfffc, method(:peek_jam_1), nil)
-  add_mappings(0xfffd, method(:peek_jam_2), nil)
-#endif
-  }
+  void reset();
 
 private:
 #if 0
@@ -61,44 +37,56 @@ private:
     CLK_1, CLK_2, CLK_3, CLK_4, CLK_5, CLK_6, CLK_7, CLK_8 = (1..8).map {|i| i * RP2A03_CC }
 #endif
   // main memory
-  std::array<UNKNOWN, 0x10000> fetch{};
-  std::array<UNKNOWN, 0x10000> store{};
-  std::array<uint8_t, 0x800> ram{};
-  //    @peeks = {}
-  //    @pokes = {}
-  // #clock management
+  std::array<std::function<uint8_t(address_t addr)>, 0x10000> fetch_{};
+  std::array<std::function<void(address_t addr, uint8_t data)>, 0x10000>
+      store_{};
+  std::array<uint8_t, 0x800> ram_{};
+  // # clock management
   /// the current clock
-  UNKNOWN clk{};
+  UNKNOWN clk_{};
   /// the next frame clock
-  UNKNOWN clk_frame{};
+  UNKNOWN clk_frame_{};
   /// the goal clock for the current CPU#run
-  UNKNOWN clk_target{};
+  UNKNOWN clk_target_{};
   /// the next NMI clock (FOREVER_CLOCK means "not scheduled")
-  UNKNOWN clk_nmi{kForeverClock};
+  UNKNOWN clk_nmi_{kForeverClock};
   /// the next IRQ clock
-  UNKNOWN clk_irq{kForeverClock};
+  UNKNOWN clk_irq_{kForeverClock};
   /// the total elapsed clocks
-  UNKNOWN clk_total{};
+  UNKNOWN clk_total_{};
   // #interrupt
-  UNKNOWN irq_flags{};
-  bool jammed{};
-  // #registers
-  UNKNOWN reg_a{};
-  UNKNOWN reg_x{};
-  UNKNOWN reg_y{};
-  UNKNOWN reg_sp{};
-  UNKNOWN reg_pc{};
+  UNKNOWN irq_flags_{};
+  bool jammed_{};
+  // # registers
+  UNKNOWN reg_a_{};
+  UNKNOWN reg_x_{};
+  UNKNOWN reg_y_{};
+  UNKNOWN reg_sp_{};
+  UNKNOWN reg_pc_{};
   // # register
-  UNKNOWN reg_p_nz{};
-  UNKNOWN reg_p_c{};
-  UNKNOWN reg_p_v{};
-  UNKNOWN reg_p_i{};
-  UNKNOWN reg_p_d{};
+  UNKNOWN reg_p_nz_{};
+  UNKNOWN reg_p_c_{};
+  UNKNOWN reg_p_v_{};
+  UNKNOWN reg_p_i_{};
+  UNKNOWN reg_p_d_{};
   //
-  UNKNOWN addr{};
-  UNKNOWN data{};
-  UNKNOWN opcode{};
-  bool ppu_sync{};
+  UNKNOWN addr_{};
+  UNKNOWN data_{};
+  UNKNOWN opcode_{};
+  bool ppu_sync_{};
+  // # methods
+  void
+  addMappings(address_t begin, address_t end,
+              const std::function<uint8_t(address_t addr)> &peek,
+              const std::function<void(address_t addr, uint8_t data)> &poke);
+  // # inline methods
+  uint8_t fetch(address_t addr) { return this->fetch_.at(addr)(addr); }
+  void store(address_t addr, uint8_t data) {
+    return this->store_.at(addr)(addr);
+  }
+  uint16_t peek16(address_t addr) {
+    return this->fetch(addr) + (this->fetch(addr + 1) << 8);
+  }
 };
 
 CPU::CPU(std::shared_ptr<Config> conf)
@@ -109,58 +97,62 @@ CPU::CPU(std::shared_ptr<Config> conf)
 CPU::~CPU() = default;
 
 void CPU::reset() { this->p_->reset(); }
+
+void CPU::Impl::reset() {
+  // registers
+  this->reg_a_ = 0;
+  this->reg_x_ = 0;
+  this->reg_y_ = 0;
+  this->reg_sp_ = 0xfd;
+  this->reg_pc_ = 0xfffc;
+  // P register
+  this->reg_p_nz_ = 1;
+  this->reg_p_c_ = 0;
+  this->reg_p_v_ = 0;
+  this->reg_p_i_ = 0x04;
+  this->reg_p_d_ = 0;
+  // clocks
+  this->clk_ = 0;
+  this->clk_total_ = 0;
+  // RAM
+  this->ram_.fill(0xff);
+  // memory mappings by self
+  // 2KB internal RAM
+  this->addMappings(
+      0x0000, 0x07ff,
+      [&](address_t addr) -> uint8_t { return this->ram_.at(addr); },
+      [&](address_t addr, uint8_t data) { this->ram_.at(addr) = data; });
+  // Mirrors of $0000-$07FF
+  this->addMappings(
+      0x0800, 0x1fff,
+      [&](address_t addr) -> uint8_t { return this->ram_.at(addr % 0x0800); },
+      [&](address_t addr, uint8_t data) {
+        this->ram_.at(addr % 0x0800) = data;
+      });
 #if 0
-def peek_ram(addr)
-  @ram[addr % 0x0800]
-end
-
-def poke_ram(addr, data)
-  @ram[addr % 0x0800] = data
-end
-
 def peek_nop(addr)
   addr >> 8
-end
-
 def peek_jam_1(_addr)
   @_pc = (@_pc - 1) & 0xffff
   0xfc
-end
-
 def peek_jam_2(_addr)
   0xff
-end
+add_mappings(0x2000..0xffff, method(:peek_nop), nil)
+add_mappings(0xfffc, method(:peek_jam_1), nil)
+add_mappings(0xfffd, method(:peek_jam_2), nil)
+#endif
+}
 
-###########################################################################
-#mapped memory API
-
-def add_mappings(addr, peek, poke)
-#filter the logically equivalent objects
-  peek = @peeks[peek] ||= peek
-  poke = @pokes[poke] ||= poke
-
-  (addr.is_a?(Integer) ? [addr] : addr).each do |a|
-    @fetch[a] = peek
-    @store[a] = poke || PokeNop
-  end
-end
-
-def self.poke_nop(_addr, _data)
-end
-PokeNop = method(:poke_nop)
-
-def fetch(addr)
-  @fetch[addr][addr]
-end
-
-def store(addr, value)
-  @store[addr][addr, value]
-end
-
-def peek16(addr)
-  @fetch[addr][addr] + (@fetch[addr + 1][addr + 1] << 8)
-end
-
+void CPU::Impl::addMappings(
+    address_t begin, address_t end,
+    const std::function<uint8_t(address_t addr)> &peek,
+    const std::function<void(address_t addr, uint8_t data)> &poke) {
+  for (address_t addr = begin; addr <= end; ++addr) {
+    this->fetch_.at(addr) = peek;
+    this->store_.at(addr) = poke || [&](address_t addr, uint8_t data) {};
+  }
+}
+#if 0
 ###########################################################################
 #other APIs
 

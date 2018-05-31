@@ -20,6 +20,8 @@
         "tuple": "cpp",
         "type_traits": "cpp",
         "typeinfo": "cpp",
-        "utility": "cpp"
+        "utility": "cpp",
+        "unordered_map": "cpp",
+        "vector": "cpp"
     }
 }
