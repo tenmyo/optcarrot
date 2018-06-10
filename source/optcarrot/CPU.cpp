@@ -82,10 +82,11 @@ private:
   // # inline methods
   uint8_t fetch(address_t addr) { return this->fetch_.at(addr)(addr); }
   void store(address_t addr, uint8_t data) {
-    return this->store_.at(addr)(addr);
+    return this->store_.at(addr)(addr, data);
   }
   uint16_t peek16(address_t addr) {
-    return this->fetch(addr) + (this->fetch(addr + 1) << 8);
+    return this->fetch(addr) +
+           static_cast<uint16_t>(this->fetch(addr + 1) << 8);
   }
 };
 
@@ -149,7 +150,7 @@ void CPU::Impl::addMappings(
     const std::function<void(address_t addr, uint8_t data)> &poke) {
   for (address_t addr = begin; addr <= end; ++addr) {
     this->fetch_.at(addr) = peek;
-    this->store_.at(addr) = poke || [&](address_t addr, uint8_t data) {};
+    this->store_.at(addr) = poke;
   }
 }
 #if 0
