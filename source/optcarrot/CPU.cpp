@@ -130,25 +130,24 @@ void CPU::Impl::reset() {
       [&](address_t addr, uint8_t data) {
         this->ram_.at(addr % 0x0800) = data;
       });
-#if 0
-def peek_nop(addr)
-  addr >> 8
-def peek_jam_1(_addr)
-  @_pc = (@_pc - 1) & 0xffff
-  0xfc
-def peek_jam_2(_addr)
-  0xff
-add_mappings(0x2000..0xffff, method(:peek_nop), nil)
-add_mappings(0xfffc, method(:peek_jam_1), nil)
-add_mappings(0xfffd, method(:peek_jam_2), nil)
-#endif
+  this->addMappings(0x2000, 0xffff,
+                    [&](address_t addr) -> uint8_t { return addr >> 8; },
+                    [&](address_t, uint8_t) {});
+  this->addMappings(0xfffc, 0xfffc,
+                    [&](address_t) -> uint8_t {
+                      this->reg_pc_ = (this->reg_pc_ - 1) & 0xffff;
+                      return 0xfc;
+                    },
+                    [&](address_t, uint8_t) {});
+  this->addMappings(0xfffd, 0xfffd, [&](address_t) -> uint8_t { return 0xff; },
+                    [&](address_t, uint8_t) {});
 }
 
 void CPU::Impl::addMappings(
     address_t begin, address_t end,
     const std::function<uint8_t(address_t addr)> &peek,
     const std::function<void(address_t addr, uint8_t data)> &poke) {
-  for (address_t addr = begin; addr <= end; ++addr) {
+  for (size_t addr = begin; addr <= end; ++addr) {
     this->fetch_.at(addr) = peek;
     this->store_.at(addr) = poke;
   }
