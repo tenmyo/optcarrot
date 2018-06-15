@@ -9,7 +9,7 @@ class Config;
 /// Cartridge class (with NROM mapper implemented)
 class ROM {
 public:
-  explicit ROM(std::shared_ptr<Config> conf,
+  explicit ROM(std::shared_ptr<Config> conf, std::string basename,
                const std::unique_ptr<uint8_t[]> &buf);
   ~ROM();
   // disallow copy
@@ -22,6 +22,8 @@ public:
   void reset();
 
   static std::unique_ptr<ROM> load(std::shared_ptr<Config> conf);
+
+  enum class MirroringKind { kNone, kHorizontal, kVertical, kFourScreen };
 
 private:
   class Impl;
