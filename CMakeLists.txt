@@ -39,13 +39,13 @@ target_include_directories(${PROJECT_NAME} PUBLIC "${PROJECT_SOURCE_DIR}/include
 target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${SDL2_INCLUDE_DIRS}" "${SDL2IMAGE_INCLUDE_DIRS}")
 target_link_libraries(${PROJECT_NAME} "${SDL2_LIBRARIES}" "${SDL2IMAGE_LIBRARIES}")
 clang_format(${PROJECT_NAME} ${SRCS})
-#clang_tidy(${PROJECT_NAME})
+clang_tidy(${PROJECT_NAME})
 
 # Build executable
 add_executable(${PROJECT_NAME}-exe main.cpp)
 set_target_properties(${PROJECT_NAME}-exe PROPERTIES OUTPUT_NAME ${PROJECT_NAME})
 target_compile_options(${PROJECT_NAME}-exe PRIVATE ${DEFAULT_COMPILE_OPTIONS})
-target_link_libraries(${PROJECT_NAME}-exe ${PROJECT_NAME})
+target_link_libraries(${PROJECT_NAME}-exe ${PROJECT_NAME} stdc++fs)
 clang_format(${PROJECT_NAME}-exe main.cpp)
 #clang_tidy(${PROJECT_NAME}-exe)
 
