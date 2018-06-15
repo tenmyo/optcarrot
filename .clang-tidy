@@ -2,7 +2,8 @@ Checks: '*,
          -cppcoreguidelines-pro-type-vararg,
          -hicpp-signed-bitwise,
          -hicpp-vararg,
-         -google-build-using-namespace'
+         -google-build-using-namespace,
+         -fuchsia-default-arguments'
 WarningsAsErrors: ''
 HeaderFilterRegex: 'optcarrot*'
 AnalyzeTemporaryDtors: false
