@@ -2,6 +2,7 @@
 #define OPTCARROT_ROM_H
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 namespace optcarrot {
 class Config;
@@ -10,7 +11,7 @@ class Config;
 class ROM {
 public:
   explicit ROM(std::shared_ptr<Config> conf, std::string basename,
-               const std::unique_ptr<uint8_t[]> &buf);
+               const std::vector<uint8_t> &buf);
   ~ROM();
   // disallow copy
   ROM(const ROM &) = delete;

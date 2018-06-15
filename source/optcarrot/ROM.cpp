@@ -37,8 +37,11 @@ public:
   bool Battery;
   uint8_t Mapper;
 
-  void parseHeader(const std::unique_ptr<uint8_t[]> &buf, uint8_t *prg_banks,
+  void parseHeader(const std::vector<uint8_t> &buf, uint8_t *prg_banks,
                    uint8_t *chr_banks, uint8_t *ram_banks) {
+    if (buf.size() < 16) {
+      throw InvalidROM("Missing 16-byte header");
+    }
     if ((buf[0] != 'N') || (buf[1] != 'E') || (buf[2] != 'S') ||
         (buf[3] != '\x1a')) {
       throw InvalidROM("Missing 'NES' constant in header");
@@ -67,7 +70,7 @@ public:
 };
 
 ROM::ROM(std::shared_ptr<Config> conf, std::string basename,
-         const std::unique_ptr<uint8_t[]> &buf)
+         const std::vector<uint8_t> &buf)
     : conf_(std::move(conf)), p_(std::make_unique<Impl>(basename)) {
   uint8_t prg_count;
   uint8_t chr_count;
@@ -107,19 +110,20 @@ std::unique_ptr<ROM> ROM::load(std::shared_ptr<Config> conf) {
   std::filesystem::path p("_ruby/examples/Lan_Master.nes",
                           std::filesystem::path::auto_format);
   auto size = std::filesystem::file_size(p);
-  std::basic_ifstream<uint8_t> ifs(p, std::ios_base::in | std::ios::binary);
-  auto buf = std::make_unique<uint8_t[]>(size);
-  if (!ifs.good()) {
-    std::cerr << "ファイルを開けませんでした。" << std::endl;
+  std::ifstream ifs(p, std::ios_base::in | std::ios::binary);
+  std::vector<uint8_t> buf(size);
+  if (!ifs) {
+    throw std::runtime_error("failed to open a ROM file.");
   }
-  buf[0] = 0xfa;
-  ifs.read(buf.get(), static_cast<std::streamsize>(size));
+  ifs.read(reinterpret_cast<char *>(buf.data()),
+           static_cast<std::streamsize>(size));
   if (!ifs.good()) {
     std::cerr << "error: only " << ifs.gcount() << " could be read"
               << std::endl;
+    throw std::runtime_error("failed to read a ROM file.");
   }
 
-  return std::make_unique<ROM>(conf, p.filename(), buf);
+  return std::make_unique<ROM>(std::move(conf), p.filename(), buf);
 }
 
 #if 0
