@@ -1,9 +1,9 @@
-
+#ifndef OPTCARROT_CPU_H
+#define OPTCARROT_CPU_H
 #include <memory>
 
 namespace optcarrot {
 class Config;
-class Video;
 
 /// CPU implementation
 class CPU {
@@ -25,3 +25,4 @@ private:
   std::unique_ptr<Impl> p_;
 };
 } // namespace optcarrot
+#endif

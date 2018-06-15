@@ -44,6 +44,7 @@ private:
   // # clock management
   /// the current clock
   UNKNOWN clk_{};
+#if 0
   /// the next frame clock
   UNKNOWN clk_frame_{};
   /// the goal clock for the current CPU#run
@@ -52,11 +53,14 @@ private:
   UNKNOWN clk_nmi_{kForeverClock};
   /// the next IRQ clock
   UNKNOWN clk_irq_{kForeverClock};
+#endif
   /// the total elapsed clocks
   UNKNOWN clk_total_{};
+#if 0
   // #interrupt
   UNKNOWN irq_flags_{};
   bool jammed_{};
+#endif
   // # registers
   UNKNOWN reg_a_{};
   UNKNOWN reg_x_{};
@@ -69,11 +73,13 @@ private:
   UNKNOWN reg_p_v_{};
   UNKNOWN reg_p_i_{};
   UNKNOWN reg_p_d_{};
+#if 0
   //
   UNKNOWN addr_{};
   UNKNOWN data_{};
   UNKNOWN opcode_{};
   bool ppu_sync_{};
+#endif
   // # methods
   void
   addMappings(address_t begin, address_t end,

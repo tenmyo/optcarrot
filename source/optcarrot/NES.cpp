@@ -5,19 +5,40 @@
 #include "optcarrot/NES.h"
 
 // Local/Private headers
+#include "optcarrot/APU.h"
 #include "optcarrot/CPU.h"
 #include "optcarrot/Config.h"
 #include "optcarrot/Driver/Video.h"
+#include "optcarrot/PPU.h"
+#include "optcarrot/Pads.h"
+#include "optcarrot/ROM.h"
 
 // External headers
 
 // System headers
 
 using namespace optcarrot;
+class NES::Impl {
+public:
+  explicit Impl() = default;
+  std::shared_ptr<Video> Video;
+  std::shared_ptr<CPU> Cpu;
+  std::shared_ptr<APU> Apu;
+  std::shared_ptr<PPU> Ppu;
+  std::shared_ptr<ROM> Rom;
+  std::shared_ptr<Pads> Pads;
+
+private:
+};
 
 NES::NES(std::shared_ptr<Config> conf)
-    : conf_(std::move(conf)), video_(std::make_unique<Video>(conf)),
-      cpu_(std::make_unique<CPU>(conf)) {}
+    : conf_(std::move(conf)), p_(std::make_unique<Impl>()) {
+  this->p_->Video = std::make_unique<Video>(conf);
+  this->p_->Cpu = std::make_unique<CPU>(conf);
+  this->p_->Apu = std::make_unique<APU>(conf);
+  this->p_->Rom = ROM::load(conf);
+  this->p_->Pads = std::make_unique<Pads>(conf);
+}
 NES::~NES() noexcept = default;
 
 #if 0

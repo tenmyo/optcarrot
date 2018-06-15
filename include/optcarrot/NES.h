@@ -4,8 +4,6 @@
 
 namespace optcarrot {
 class Config;
-class Video;
-class CPU;
 
 /// NES emulation main
 class NES {
@@ -22,9 +20,9 @@ public:
   NES &operator=(NES &&) noexcept = default;
 
 private:
+  class Impl;
   std::shared_ptr<Config> conf_;
-  std::unique_ptr<Video> video_;
-  std::unique_ptr<CPU> cpu_;
+  std::unique_ptr<Impl> p_;
 };
 } // namespace optcarrot
 #endif
