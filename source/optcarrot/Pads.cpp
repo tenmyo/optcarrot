@@ -18,3 +18,5 @@ Pads::Pads(std::shared_ptr<Config> conf)
     : conf_(std::move(conf)), p_(std::make_unique<Impl>()) {}
 
 Pads::~Pads() = default;
+
+void Pads::reset() {}

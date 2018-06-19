@@ -11,18 +11,29 @@
 
 // System headers
 #include <array>
-#include <cstdint>
-#include <functional>
 
 using namespace optcarrot;
 
 using UNKNOWN = unsigned;
-using address_t = uint16_t;
 
 class CPU::Impl {
 public:
   explicit Impl() = default;
+  // # methods
   void reset();
+  void
+  addMappings(address_t begin, address_t end,
+              const std::function<uint8_t(address_t addr)> &peek,
+              const std::function<void(address_t addr, uint8_t data)> &poke);
+  // # inline methods
+  uint8_t fetch(address_t addr) { return this->fetch_.at(addr)(addr); }
+  void store(address_t addr, uint8_t data) {
+    return this->store_.at(addr)(addr, data);
+  }
+  uint16_t peek16(address_t addr) {
+    return this->fetch(addr) +
+           static_cast<uint16_t>(this->fetch(addr + 1) << 8);
+  }
 
 private:
 #if 0
@@ -80,30 +91,7 @@ private:
   UNKNOWN opcode_{};
   bool ppu_sync_{};
 #endif
-  // # methods
-  void
-  addMappings(address_t begin, address_t end,
-              const std::function<uint8_t(address_t addr)> &peek,
-              const std::function<void(address_t addr, uint8_t data)> &poke);
-  // # inline methods
-  uint8_t fetch(address_t addr) { return this->fetch_.at(addr)(addr); }
-  void store(address_t addr, uint8_t data) {
-    return this->store_.at(addr)(addr, data);
-  }
-  uint16_t peek16(address_t addr) {
-    return this->fetch(addr) +
-           static_cast<uint16_t>(this->fetch(addr + 1) << 8);
-  }
 };
-
-CPU::CPU(std::shared_ptr<Config> conf)
-    : conf_(std::move(conf)), p_(std::make_unique<Impl>()) {
-  this->reset();
-}
-
-CPU::~CPU() = default;
-
-void CPU::reset() { this->p_->reset(); }
 
 void CPU::Impl::reset() {
   // registers
@@ -157,6 +145,22 @@ void CPU::Impl::addMappings(
     this->fetch_.at(addr) = peek;
     this->store_.at(addr) = poke;
   }
+}
+
+CPU::CPU(std::shared_ptr<Config> conf)
+    : conf_(std::move(conf)), p_(std::make_unique<Impl>()) {
+  this->reset();
+}
+
+CPU::~CPU() = default;
+
+void CPU::reset() { this->p_->reset(); }
+
+void CPU::addMappings(
+    address_t begin, address_t end,
+    const std::function<uint8_t(address_t addr)> &peek,
+    const std::function<void(address_t addr, uint8_t data)> &poke) {
+  this->p_->addMappings(begin, end, peek, poke);
 }
 #if 0
 ###########################################################################

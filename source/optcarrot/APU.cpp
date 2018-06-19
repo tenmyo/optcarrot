@@ -18,3 +18,5 @@ APU::APU(std::shared_ptr<Config> conf)
     : conf_(std::move(conf)), p_(std::make_unique<Impl>()) {}
 
 APU::~APU() = default;
+
+void APU::reset() {}

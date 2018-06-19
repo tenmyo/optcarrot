@@ -19,6 +19,9 @@ public:
   NES(NES &&) noexcept = default;
   NES &operator=(NES &&) noexcept = default;
 
+  void reset();
+  void run();
+
 private:
   class Impl;
   std::shared_ptr<Config> conf_;

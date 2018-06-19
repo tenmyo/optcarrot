@@ -1,5 +1,7 @@
 #ifndef OPTCARROT_CPU_H
 #define OPTCARROT_CPU_H
+#include "optcarrot.h"
+#include <functional>
 #include <memory>
 
 namespace optcarrot {
@@ -18,6 +20,11 @@ public:
   CPU &operator=(CPU &&) noexcept = default;
 
   void reset();
+
+  void
+  addMappings(address_t begin, address_t end,
+              const std::function<uint8_t(address_t addr)> &peek,
+              const std::function<void(address_t addr, uint8_t data)> &poke);
 
 private:
   class Impl;

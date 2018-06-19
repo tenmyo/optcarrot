@@ -6,6 +6,7 @@
 
 // Local/Private headers
 #include "optcarrot.h"
+#include "optcarrot/CPU.h"
 
 // External headers
 
@@ -38,40 +39,42 @@ public:
   bool Battery;
   uint8_t Mapper;
   std::vector<std::array<uint8_t, 0x4000>> PrgBanks;
-  std::array<uint8_t, 0x10000> PrgRef{};
   std::vector<std::array<uint8_t, 0x2000>> ChrBanks;
 
   void parseHeader(const std::vector<uint8_t> &buf, uint8_t *prg_banks,
-                   uint8_t *chr_banks, uint8_t *ram_banks) {
-    if (buf.size() < 16) {
-      throw InvalidROM("Missing 16-byte header");
-    }
-    if ((buf[0] != 'N') || (buf[1] != 'E') || (buf[2] != 'S') ||
-        (buf[3] != '\x1a')) {
-      throw InvalidROM("Missing 'NES' constant in header");
-    }
-    if ((buf[6] & (1 << 2)) != 0) {
-      throw NotImplementedError("trainer not supported");
-    }
-    if ((buf[7] & (1 << 0)) != 0) {
-      throw NotImplementedError("VS cart not supported");
-    }
-    if ((buf[9] & (1 << 0)) != 0) {
-      throw NotImplementedError("PAL not supported");
-    }
-
-    this->Mirroring = ((buf[6] & (1 << 0)) != 0) ? MirroringKind::kHorizontal
-                                                 : MirroringKind::kVertical;
-    if ((buf[6] & (1 << 3)) != 0) {
-      this->Mirroring = MirroringKind::kFourScreen;
-    }
-    this->Battery = ((buf[6] & (1 << 1)) != 0);
-    this->Mapper = (buf[6] >> 4) | (buf[7] & 0xf0);
-    *prg_banks = buf[4];
-    *chr_banks = buf[5];
-    *ram_banks = std::max(static_cast<uint8_t>(1), buf[8]);
-  }
+                   uint8_t *chr_banks, uint8_t *ram_banks);
 };
+
+void ROM::Impl::parseHeader(const std::vector<uint8_t> &buf, uint8_t *prg_banks,
+                            uint8_t *chr_banks, uint8_t *ram_banks) {
+  if (buf.size() < 16) {
+    throw InvalidROM("Missing 16-byte header");
+  }
+  if ((buf[0] != 'N') || (buf[1] != 'E') || (buf[2] != 'S') ||
+      (buf[3] != '\x1a')) {
+    throw InvalidROM("Missing 'NES' constant in header");
+  }
+  if ((buf[6] & (1 << 2)) != 0) {
+    throw NotImplementedError("trainer not supported");
+  }
+  if ((buf[7] & (1 << 0)) != 0) {
+    throw NotImplementedError("VS cart not supported");
+  }
+  if ((buf[9] & (1 << 0)) != 0) {
+    throw NotImplementedError("PAL not supported");
+  }
+
+  this->Mirroring = ((buf[6] & (1 << 0)) != 0) ? MirroringKind::kHorizontal
+                                               : MirroringKind::kVertical;
+  if ((buf[6] & (1 << 3)) != 0) {
+    this->Mirroring = MirroringKind::kFourScreen;
+  }
+  this->Battery = ((buf[6] & (1 << 1)) != 0);
+  this->Mapper = (buf[6] >> 4) | (buf[7] & 0xf0);
+  *prg_banks = buf[4];
+  *chr_banks = buf[5];
+  *ram_banks = std::max(static_cast<uint8_t>(1), buf[8]);
+}
 
 ROM::ROM(std::shared_ptr<Config> conf, std::string basename,
          const std::vector<uint8_t> &buf)
@@ -106,11 +109,6 @@ ROM::ROM(std::shared_ptr<Config> conf, std::string basename,
     index += 0x2000;
   }
   /*
-
-  @prg_ref = [nil] * 0x10000
-  @prg_ref[0x8000, 0x4000] = @prg_banks.first
-  @prg_ref[0xc000, 0x4000] = @prg_banks.last
-
   @chr_ram = chr_count == 0 # No CHR bank implies CHR-RAM (writable CHR
   bank)
   @chr_ref = @chr_ram ? [0] * 0x2000 : @chr_banks[0].dup
@@ -127,6 +125,19 @@ ROM::ROM(std::shared_ptr<Config> conf, std::string basename,
 }
 
 ROM::~ROM() = default;
+
+void ROM::reset(const std::shared_ptr<CPU> &cpu) {
+  cpu->addMappings(0x8000, 0x4000,
+                   [&](address_t addr) -> uint8_t {
+                     return this->p_->PrgBanks.cbegin()->at(addr - 0x8000);
+                   },
+                   [&](address_t, uint8_t) {});
+  cpu->addMappings(0xc000, 0x4000,
+                   [&](address_t addr) -> uint8_t {
+                     return (this->p_->PrgBanks.cend() - 1)->at(addr - 0xc000);
+                   },
+                   [&](address_t, uint8_t) {});
+}
 
 std::unique_ptr<ROM> ROM::load(std::shared_ptr<Config> conf) {
   std::filesystem::path p("_ruby/examples/Lan_Master.nes",
@@ -149,23 +160,6 @@ std::unique_ptr<ROM> ROM::load(std::shared_ptr<Config> conf) {
 }
 
 #if 0
-#Cartridge class(with NROM mapper implemented)
-class ROM
-  MAPPER_DB = { 0x00 => self }
-
-#These are optional
-  require_relative "mapper/mmc1"
-  require_relative "mapper/uxrom"
-  require_relative "mapper/cnrom"
-  require_relative "mapper/mmc3"
-
-  class InvalidROM < StandardError
-  end
-
-  def reset
-    @cpu.add_mappings(0x8000..0xffff, @prg_ref, nil)
-  end
-
   def inspect
     [
       "Mapper: #{ @mapper } (#{ self.class.to_s.split("::").last })",

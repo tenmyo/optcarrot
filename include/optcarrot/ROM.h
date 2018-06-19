@@ -6,6 +6,7 @@
 
 namespace optcarrot {
 class Config;
+class CPU;
 
 /// Cartridge class (with NROM mapper implemented)
 class ROM {
@@ -20,7 +21,7 @@ public:
   ROM(ROM &&) noexcept = default;
   ROM &operator=(ROM &&) noexcept = default;
 
-  void reset();
+  void reset(const std::shared_ptr<CPU> &cpu);
 
   static std::unique_ptr<ROM> load(std::shared_ptr<Config> conf);
 
