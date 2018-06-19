@@ -31,15 +31,16 @@ class NotImplementedError : std::runtime_error {
 
 class ROM::Impl {
 public:
-  explicit Impl(std::string basename)
-      : Basename(std::move(basename)), Mirroring(MirroringKind::kNone),
-        Battery(false), Mapper(0) {}
+  explicit Impl(std::string basename) : Basename(std::move(basename)) {}
   std::string Basename;
-  MirroringKind Mirroring;
-  bool Battery;
-  uint8_t Mapper;
+  MirroringKind Mirroring{MirroringKind::kNone};
+  bool Battery{};
+  uint8_t Mapper{};
   std::vector<std::array<uint8_t, 0x4000>> PrgBanks;
   std::vector<std::array<uint8_t, 0x2000>> ChrBanks;
+  bool ChrRam{};
+  bool WrkReadable{};
+  bool WrkWritable{};
 
   void parseHeader(const std::vector<uint8_t> &buf, uint8_t *prg_banks,
                    uint8_t *chr_banks, uint8_t *ram_banks);
@@ -108,17 +109,16 @@ ROM::ROM(std::shared_ptr<Config> conf, std::string basename,
               this->p_->ChrBanks.back().begin());
     index += 0x2000;
   }
+
+  this->p_->ChrRam =
+      chr_count == 0; // No CHR bank implies CHR-RAM (writable CHR bank)
+  //@chr_ref = @chr_ram ? [0] * 0x2000 : @chr_banks[0].dup
+
+  this->p_->WrkReadable = wrk_count > 0;
+  this->p_->WrkWritable = false;
+  // @wrk = wrk_count > 0 ? (0x6000..0x7fff).map {|addr| addr >> 8 } : nil
+
   /*
-  @chr_ram = chr_count == 0 # No CHR bank implies CHR-RAM (writable CHR
-  bank)
-  @chr_ref = @chr_ram ? [0] * 0x2000 : @chr_banks[0].dup
-
-  @wrk_readable = wrk_count > 0
-  @wrk_writable = false
-  @wrk = wrk_count > 0 ? (0x6000..0x7fff).map {|addr| addr >> 8 } : nil
-
-  init
-
   @ppu.nametables = @mirroring
   @ppu.set_chr_mem(@chr_ref, @chr_ram)
   */
