@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 
@@ -36,6 +37,9 @@ public:
   MirroringKind Mirroring;
   bool Battery;
   uint8_t Mapper;
+  std::vector<std::array<uint8_t, 0x4000>> PrgBanks;
+  std::array<uint8_t, 0x10000> PrgRef{};
+  std::vector<std::array<uint8_t, 0x2000>> ChrBanks;
 
   void parseHeader(const std::vector<uint8_t> &buf, uint8_t *prg_banks,
                    uint8_t *chr_banks, uint8_t *ram_banks) {
@@ -75,13 +79,33 @@ ROM::ROM(std::shared_ptr<Config> conf, std::string basename,
   uint8_t prg_count;
   uint8_t chr_count;
   uint8_t wrk_count;
-  this->p_->parseHeader(buf, &prg_count, &chr_count, &wrk_count);
-  /*
-  raise InvalidROM, "EOF in ROM bank data" if buf.size < 0x4000 * prg_count
-  @prg_banks = (0...prg_count).map { buf.slice!(0, 0x4000) }
+  auto index = 0;
 
-  raise InvalidROM, "EOF in CHR bank data" if buf.size < 0x2000 * chr_count
-  @chr_banks = (0...chr_count).map { buf.slice!(0, 0x2000) }
+  this->p_->parseHeader(buf, &prg_count, &chr_count, &wrk_count);
+  index += 16;
+
+  if (buf.size() - static_cast<size_t>(index) < 0x4000 * prg_count) {
+    throw InvalidROM("EOF in ROM bank data");
+  }
+  this->p_->PrgBanks.reserve(prg_count);
+  for (auto i = 0; i < prg_count; ++i) {
+    this->p_->PrgBanks.emplace_back();
+    std::copy(buf.begin() + index, buf.begin() + index + 0x4000,
+              this->p_->PrgBanks.back().begin());
+    index += 0x4000;
+  }
+
+  if (buf.size() - static_cast<size_t>(index) < 0x2000 * chr_count) {
+    throw InvalidROM("EOF in CHR bank data");
+  }
+  this->p_->ChrBanks.reserve(chr_count);
+  for (auto i = 0; i < chr_count; ++i) {
+    this->p_->ChrBanks.emplace_back();
+    std::copy(buf.begin() + index, buf.begin() + index + 0x2000,
+              this->p_->ChrBanks.back().begin());
+    index += 0x2000;
+  }
+  /*
 
   @prg_ref = [nil] * 0x10000
   @prg_ref[0x8000, 0x4000] = @prg_banks.first
@@ -103,8 +127,6 @@ ROM::ROM(std::shared_ptr<Config> conf, std::string basename,
 }
 
 ROM::~ROM() = default;
-
-#include <iostream>
 
 std::unique_ptr<ROM> ROM::load(std::shared_ptr<Config> conf) {
   std::filesystem::path p("_ruby/examples/Lan_Master.nes",
@@ -138,24 +160,6 @@ class ROM
   require_relative "mapper/mmc3"
 
   class InvalidROM < StandardError
-  end
-
-  def parse_header(buf)
-    raise InvalidROM, "Missing 16-byte header" if buf.size < 16
-    raise InvalidROM, "Missing 'NES' constant in header" if buf[0, 4] != "NES\x1a".bytes
-    raise NotImplementedError, "trainer not supported" if buf[6][2] == 1
-    raise NotImplementedError, "VS cart not supported" if buf[7][0] == 1
-    raise NotImplementedError, "PAL not supported" unless buf[9][0] == 0
-
-    prg_banks = buf[4]
-    chr_banks = buf[5]
-    @mirroring = buf[6][0] == 0 ? :horizontal : :vertical
-    @mirroring = :four_screen if buf[6][3] == 1
-    @battery = buf[6][1] == 1
-    @mapper = (buf[6] >> 4) | (buf[7] & 0xf0)
-    ram_banks = [1, buf[8]].max
-
-    return prg_banks, chr_banks, ram_banks
   end
 
   def reset
