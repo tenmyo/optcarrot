@@ -99,9 +99,7 @@ struct SDL2Video::Impl {
 };
 
 SDL2Video::SDL2Video(std::shared_ptr<Config> conf)
-    : Video(std::move(conf)), p_(std::make_unique<Impl>()) {
-  SDL_Delay(3000);
-}
+    : Video(std::move(conf)), p_(std::make_unique<Impl>()) {}
 
 SDL2Video::~SDL2Video() = default;
 

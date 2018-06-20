@@ -111,10 +111,10 @@ ROM::ROM(std::shared_ptr<Config> conf, std::string basename,
   }
 
   this->p_->ChrRam =
-      chr_count == 0; // No CHR bank implies CHR-RAM (writable CHR bank)
+      (chr_count == 0); // No CHR bank implies CHR-RAM (writable CHR bank)
   //@chr_ref = @chr_ram ? [0] * 0x2000 : @chr_banks[0].dup
 
-  this->p_->WrkReadable = wrk_count > 0;
+  this->p_->WrkReadable = (wrk_count > 0);
   this->p_->WrkWritable = false;
   // @wrk = wrk_count > 0 ? (0x6000..0x7fff).map {|addr| addr >> 8 } : nil
 

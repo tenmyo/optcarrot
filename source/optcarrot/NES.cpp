@@ -27,31 +27,27 @@ public:
   std::shared_ptr<PPU> Ppu;
   std::shared_ptr<ROM> Rom;
   std::shared_ptr<Pads> Pads;
+  size_t Frame{};
+  size_t FrameTarget{};
 
 private:
 };
 
 NES::NES(std::shared_ptr<Config> conf)
     : conf_(std::move(conf)), p_(std::make_unique<Impl>()) {
-  this->p_->Video = std::make_unique<Video>(conf);
-  this->p_->Cpu = std::make_unique<CPU>(conf);
-  this->p_->Apu = std::make_unique<APU>(conf);
-  this->p_->Rom = ROM::load(conf);
-  this->p_->Pads = std::make_unique<Pads>(conf);
-  /*
-  @video, @audio, @input = Driver.load(@conf)
+  this->p_->Video = std::make_unique<Video>(conf_);
+  // @video, @audio, @input = Driver.load(@conf)
+  this->p_->Cpu = std::make_unique<CPU>(conf_);
+  this->p_->Apu = std::make_unique<APU>(conf_);
+  this->p_->Ppu = std::make_unique<PPU>(conf_);
+  this->p_->Rom = ROM::load(conf_);
+  this->p_->Pads = std::make_unique<Pads>(conf_);
 
-  @cpu =            CPU.new(@conf)
-  @apu = @cpu.apu = APU.new(@conf, @cpu, *@audio.spec)
-  @ppu = @cpu.ppu = PPU.new(@conf, @cpu, @video.palette)
-  @rom  = ROM.load(@conf, @cpu, @ppu)
-  @pads = Pads.new(@conf, @cpu, @apu)
-
-  @frame = 0
-  @frame_target = @conf.frames == 0 ? nil : @conf.frames
-  @fps_history = [] if @conf.print_fps_history
-  */
+  this->p_->Frame = 0;
+  this->p_->FrameTarget = conf_->Frames;
+  // @fps_history = [] if @conf.print_fps_history
 }
+
 NES::~NES() noexcept = default;
 
 void NES::reset() {
@@ -68,34 +64,22 @@ void NES::reset() {
 
 void NES::run() {
   this->reset();
-  /*
-  reset
-
-  if @conf.stackprof_mode
-    require "stackprof"
-    out = @conf.stackprof_output.sub("MODE", @conf.stackprof_mode)
-    StackProf.start(mode: @conf.stackprof_mode.to_sym, out: out)
-  end
-
-  step until @frame == @frame_target
-
-  if @conf.stackprof_mode
-    StackProf.stop
-    StackProf.results
-  end
-ensure
-  dispose
-  */
+  
+  if (this->p_->FrameTarget == 0) {
+    for (;;) {
+      this->step();
+    }
+  } else {
+    while (this->p_->Frame < this->p_->FrameTarget) {
+      this->step();
+    }
+  }
+  // ensure
+  //   dispose
 }
 
+void NES::step() {
 #if 0
-def inspect
-  "#<#{ self.class }>"
-end
-
-attr_reader :fps, :video, :audio, :input, :cpu, :ppu, :apu
-
-def step
   @ppu.setup_frame
   @cpu.run
   @ppu.vsync
@@ -107,10 +91,18 @@ def step
   @fps = @video.tick(@ppu.output_pixels)
   @fps_history << @fps if @conf.print_fps_history
   @audio.tick(@apu.output)
+#endif
 
-  @frame += 1
-  @conf.info("frame #{ @frame }") if @conf.loglevel >= 2
+  this->p_->Frame++;
+  // @conf.info("frame #{ @frame }") if @conf.loglevel >= 2
+}
+
+#if 0
+def inspect
+  "#<#{ self.class }>"
 end
+
+attr_reader :fps, :video, :audio, :input, :cpu, :ppu, :apu
 
 def dispose
   if @fps

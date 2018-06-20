@@ -1,11 +1,15 @@
 #ifndef OPTCARROT_CONFIG_H
 #define OPTCARROT_CONFIG_H
+
+#include <cstddef>
+
 namespace optcarrot {
 
 /// config manager and logger
 class Config {
 public:
   explicit Config(int /*argc*/, const char * /*unused*/ []) {}
+  size_t Frames{200};
 #if 0
 
     OPTIONS = {
