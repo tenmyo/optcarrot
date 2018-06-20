@@ -1,6 +1,7 @@
 #ifndef OPTCARROT_PPU_H
 #define OPTCARROT_PPU_H
 #include <memory>
+#include <vector>
 
 namespace optcarrot {
 class Config;
@@ -9,7 +10,8 @@ class CPU;
 /// PPU implementation (video output)
 class PPU {
 public:
-  explicit PPU(std::shared_ptr<Config> conf, std::shared_ptr<CPU> cpu);
+  explicit PPU(std::shared_ptr<Config> conf, std::shared_ptr<CPU> cpu,
+               std::vector<uint32_t> *palette);
   ~PPU();
   // disallow copy
   PPU(const PPU &) = delete;

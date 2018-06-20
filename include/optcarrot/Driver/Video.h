@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <tuple>
+#include <vector>
 
 namespace optcarrot {
 class Config;
@@ -24,7 +25,7 @@ public:
   Video(Video &&) noexcept = default;
   Video &operator=(Video &&) noexcept = default;
 
-  std::array<uint32_t, 4096> Palette{};
+  std::vector<uint32_t> Palette;
 
 protected:
   std::array<std::tuple<uint8_t, uint8_t, uint8_t>, 512> palette_rgb_;

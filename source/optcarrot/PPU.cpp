@@ -19,7 +19,8 @@ public:
   explicit Impl() : OutputPixels(256 * 240) {}
   void setupLut();
   std::vector<uint8_t> OutputPixels;
-  std::array<uint8_t, 0x20> OutputColor{};
+  std::array<uint32_t, 0x20> OutputColor{};
+  std::vector<uint32_t> *Palette{};
 };
 
 void PPU::Impl::setupLut() {
@@ -48,18 +49,17 @@ void PPU::Impl::setupLut() {
   */
 }
 
-PPU::PPU(std::shared_ptr<Config> conf, std::shared_ptr<CPU> cpu)
+PPU::PPU(std::shared_ptr<Config> conf, std::shared_ptr<CPU> cpu,
+         std::vector<uint32_t> *palette)
     : conf_(std::move(conf)), cpu_(std::move(cpu)),
       p_(std::make_unique<Impl>()) {
-  // @palette = palette
+  this->p_->Palette = palette;
 
   // @nmt_mem = [[0xff] * 0x400, [0xff] * 0x400]
   // @nmt_ref = [0, 1, 0, 1].map {|i| @nmt_mem[i] }
 
-  // @output_pixels = []
-  // @output_color = [@palette[0]] * 0x20 # palette size is 0x20
   this->p_->OutputPixels.clear();
-  // this->p_->OutputColor.fill();
+  this->p_->OutputColor.fill(palette->at(0));
 
   this->reset();
   this->p_->setupLut();

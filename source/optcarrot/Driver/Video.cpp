@@ -14,13 +14,11 @@
 
 using namespace optcarrot;
 
-Video::Video(std::shared_ptr<Config> conf) : conf_(std::move(conf)) {
+Video::Video(std::shared_ptr<Config> conf)
+    : Palette(4096), conf_(std::move(conf)) {
   this->palette_rgb_ =
       (this->conf_->UseNestopiaPalette ? Palette::defactoPalette()
                                        : Palette::nestopiaPalette());
-  // @palette_rgb = @conf.nestopia_palette ? Palette.nestopia_palette :
-  // Palette.defacto_palette
-  // @palette = [*0..4096] # dummy palette
   // init
 }
 

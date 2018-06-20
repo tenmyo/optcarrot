@@ -61,8 +61,8 @@ NES::NES(std::shared_ptr<Config> conf)
   this->p_->Cpu = std::make_unique<CPU>(conf_);
   this->p_->Apu = std::make_unique<APU>(conf_);
   // @apu = @cpu.apu = APU.new(@conf, @cpu, *@audio.spec)
-  this->p_->Ppu = std::make_unique<PPU>(conf_, this->p_->Cpu);
-  // @ppu = @cpu.ppu = PPU.new(@conf, @cpu, @video.palette)
+  this->p_->Ppu =
+      std::make_unique<PPU>(conf_, this->p_->Cpu, &this->p_->Video->Palette);
   this->p_->Rom = ROM::load(conf_);
   // @rom  = ROM.load(@conf, @cpu, @ppu)
   this->p_->Pads = std::make_unique<Pads>(conf_);

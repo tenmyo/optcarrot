@@ -99,17 +99,18 @@ struct SDL2Video::Impl {
 };
 
 SDL2Video::SDL2Video(std::shared_ptr<Config> conf)
-    : Video(std::move(conf)), p_(std::make_unique<Impl>()) {}
+    : Video(std::move(conf)), p_(std::make_unique<Impl>()) {
+  this->Palette.clear();
+  for (const auto &t : this->palette_rgb_) {
+    const auto [r, g, b] = t;
+    this->Palette.emplace_back(0xff000000 | static_cast<uint32_t>(r << 16) |
+                               static_cast<uint32_t>(g << 8) | b);
+  }
+}
 
 SDL2Video::~SDL2Video() = default;
 
 #if 0
-def init
-  @palette = @palette_rgb.map do |r, g, b|
-    0xff000000 | (r << 16) | (g << 8) | b
-  end
-end
-
 def change_window_size(scale)
   if scale
     SDL2.SetWindowFullscreen(@window, 0)
