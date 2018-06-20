@@ -1,6 +1,9 @@
 #ifndef OPTCARROT_DRIVER_VIDEO_H
 #define OPTCARROT_DRIVER_VIDEO_H
+#include <array>
+#include <cstdint>
 #include <memory>
+#include <tuple>
 
 namespace optcarrot {
 class Config;
@@ -12,7 +15,7 @@ public:
   static constexpr auto kTvWidth = 292;
   static constexpr auto kHeight = 224;
 
-  explicit Video(std::shared_ptr<Config> conf) : conf_(std::move(conf)) {}
+  explicit Video(std::shared_ptr<Config> conf);
   virtual ~Video();
   // disallow copy
   Video(const Video &) = delete;
@@ -21,35 +24,13 @@ public:
   Video(Video &&) noexcept = default;
   Video &operator=(Video &&) noexcept = default;
 
+  std::array<uint32_t, 4096> Palette{};
+
+protected:
+  std::array<std::tuple<uint8_t, uint8_t, uint8_t>, 512> palette_rgb_;
+
 private:
   std::shared_ptr<Config> conf_;
-#if 0
-    def initialize(conf)
-      @conf = conf
-      @palette_rgb = @conf.nestopia_palette ? Palette.nestopia_palette : Palette.defacto_palette
-      @palette = [*0..4096] # dummy palette
-      init
-    end
-
-    attr_reader :palette
-
-    def init
-      @times = []
-    end
-
-    def tick(_output)
-      @times << Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      @times.shift if @times.size > 10
-      @times.size < 2 ? 0 : ((@times.last - @times.first) / (@times.size - 1)) ** -1
-    end
-
-    def change_window_size(_scale)
-    end
-
-    def on_resize(_width, _height)
-    end
-  end
-#endif
 };
 } // namespace optcarrot
 

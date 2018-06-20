@@ -21,7 +21,6 @@ public:
 
   void reset();
   void run();
-  void step();
 
 private:
   class Impl;

@@ -10,6 +10,7 @@ class Config {
 public:
   explicit Config(int /*argc*/, const char * /*unused*/ []) {}
   size_t Frames{200};
+  bool UseNestopiaPalette{};
 #if 0
 
     OPTIONS = {
