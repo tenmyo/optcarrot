@@ -10,7 +10,7 @@ class CPU;
 /// PPU implementation (video output)
 class PPU {
 public:
-  explicit PPU(std::shared_ptr<Config> conf, std::shared_ptr<CPU> cpu,
+  explicit PPU(const std::shared_ptr<Config> &conf, std::shared_ptr<CPU> cpu,
                std::vector<uint32_t> *palette);
   ~PPU();
   // disallow copy
@@ -24,7 +24,6 @@ public:
   void setupFrame();
 
 private:
-  std::shared_ptr<Config> conf_;
   std::shared_ptr<CPU> cpu_;
   class Impl;
   std::unique_ptr<Impl> p_;

@@ -3,7 +3,7 @@ Checks: '*,
          -hicpp-signed-bitwise,
          -hicpp-vararg,
          -google-build-using-namespace,
-         -fuchsia-default-arguments'
+         -fuchsia-*'
 WarningsAsErrors: ''
 HeaderFilterRegex: 'optcarrot*'
 AnalyzeTemporaryDtors: false

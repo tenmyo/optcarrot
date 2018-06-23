@@ -7,10 +7,13 @@
 // Local/Private headers
 #include "optcarrot.h"
 #include "optcarrot/CPU.h"
+#include "optcarrot/Config.h"
 
 // External headers
 
 // System headers
+#include <algorithm>
+#include <tuple>
 #include <vector>
 
 using namespace optcarrot;
@@ -72,7 +75,7 @@ static constexpr auto kTileLut = [] {
 
 class PPU::Impl {
 public:
-  explicit Impl(std::vector<uint32_t> *palette);
+  explicit Impl(std::vector<uint32_t> *palette, bool splite_limit);
   void reset();
   void updateOutputColor();
   void setupLut();
@@ -150,10 +153,20 @@ private:
   // for internal state
   // 8 sprites per line are allowed in standard NES, but a user may remove this
   // limit.
+  const uint8_t kSpLimit;
+  std::vector<int32_t> sp_buffer_;
+  uint8_t sp_buffered_{};
+  bool sp_visible_{};
+  std::array<std::tuple<bool, bool, uint32_t> *, 264>
+      sp_map_{}; // [[behind?, zero?, color]]
+  std::array<std::tuple<bool, bool, uint32_t>, 264>
+      sp_map_buffer_; // preallocation for @sp_map
+  bool sp_zero_in_line_{};
 };
 
-PPU::Impl::Impl(std::vector<uint32_t> *palette)
-    : output_pixels_(256 * 240), palette_(palette) {
+PPU::Impl::Impl(std::vector<uint32_t> *palette, bool splite_limit)
+    : output_pixels_(256 * 240), palette_(palette),
+      kSpLimit((splite_limit ? 8 : 32) * 4), sp_buffer_(kSpLimit) {
   this->output_color_.fill(palette->at(0));
 }
 
@@ -244,16 +257,12 @@ void PPU::Impl::reset() {
   // for internal state
   // 8 sprites per line are allowed in standard NES, but a user may remove this
   // limit.
-  /*
-   @sp_limit = (@conf.sprite_limit ? 8 : 32) * 4
-   @sp_buffer = [0] * @sp_limit
-   @sp_buffered = 0
-   @sp_visible = false
-   @sp_map = [nil] * 264 # [[behind?, zero?, color]]
-   @sp_map_buffer = (0...264).map { [false, false, 0] } # preallocation for
-   @sp_map
-   @sp_zero_in_line = false
-   */
+  std::fill(this->sp_buffer_.begin(), this->sp_buffer_.end(), 0);
+  this->sp_buffered_ = 0;
+  this->sp_visible_ = false;
+  this->sp_map_.fill(nullptr);
+  this->sp_map_buffer_.fill({false, false, 0});
+  this->sp_zero_in_line_ = false;
 }
 
 void PPU::Impl::updateOutputColor() {
@@ -289,10 +298,10 @@ void PPU::Impl::setupLut() { // TODO(tenmyo): PPU::Impl::setupLut()
   */
 }
 
-PPU::PPU(std::shared_ptr<Config> conf, std::shared_ptr<CPU> cpu,
+PPU::PPU(const std::shared_ptr<Config> &conf, std::shared_ptr<CPU> cpu,
          std::vector<uint32_t> *palette)
-    : conf_(std::move(conf)), cpu_(std::move(cpu)),
-      p_(std::make_unique<Impl>(palette)) {
+    : cpu_(std::move(cpu)),
+      p_(std::make_unique<Impl>(palette, conf->SpriteLimit)) {
   // TODO(tenmyo): PPU::PPU()
   // @nmt_mem = [[0xff] * 0x400, [0xff] * 0x400]
   // @nmt_ref = [0, 1, 0, 1].map {|i| @nmt_mem[i] }
