@@ -14,16 +14,256 @@
 #include <vector>
 
 using namespace optcarrot;
+/*
+#clock / timing constants(stolen from Nestopia)
+RP2C02_CC         = 4
+RP2C02_HACTIVE    = RP2C02_CC * 256
+RP2C02_HBLANK     = RP2C02_CC * 85
+RP2C02_HSYNC      = RP2C02_HACTIVE + RP2C02_HBLANK
+RP2C02_VACTIVE    = 240
+RP2C02_VSLEEP     = 1
+RP2C02_VINT       = 20
+RP2C02_VDUMMY     = 1
+RP2C02_VBLANK     = RP2C02_VSLEEP + RP2C02_VINT + RP2C02_VDUMMY
+RP2C02_VSYNC      = RP2C02_VACTIVE + RP2C02_VBLANK
+RP2C02_HVSYNCBOOT = RP2C02_VACTIVE * RP2C02_HSYNC + RP2C02_CC * 312
+RP2C02_HVINT      = RP2C02_VINT * RP2C02_HSYNC
+RP2C02_HVSYNC_0   = RP2C02_VSYNC * RP2C02_HSYNC
+RP2C02_HVSYNC_1   = RP2C02_VSYNC * RP2C02_HSYNC - RP2C02_CC
+*/
+// special scanlines
+static constexpr auto kScanlineHDummy = -1;  // pre-render scanline
+static constexpr auto kScanlineVBlank = 240; // post-render scanline
+
+// special horizontal clocks
+static constexpr auto kHClockDummy = 341;
+static constexpr auto kHClockVblank0 = 681;
+static constexpr auto kHClockVblank1 = 682;
+static constexpr auto kHClockVblank2 = 684;
+static constexpr auto kHClockBoot = 685;
+// DUMMY_FRAME = [RP2C02_HVINT / RP2C02_CC - HCLOCK_DUMMY, RP2C02_HVINT,
+// RP2C02_HVSYNC_0] BOOT_FRAME = [RP2C02_HVSYNCBOOT / RP2C02_CC - HCLOCK_BOOT,
+// RP2C02_HVSYNCBOOT, RP2C02_HVSYNCBOOT]
+
+/*
+#constants related to OAM(sprite)
+SP_PIXEL_POSITIONS = {
+  0 => [3, 7, 2, 6, 1, 5, 0, 4], # normal
+  1 => [4, 0, 5, 1, 6, 2, 7, 3], # flip
+}
+*/
+
+// A look - up table mapping : (two pattern bytes * attr)->eight pixels
+// kTileLut[attr][high_byte * 0x100 + low_byte] = [pixels] * 8
+static constexpr auto kTileLut = [] {
+  std::array<std::array<std::array<uint8_t, 8>, 0x10000>, 4> ary{};
+  uint8_t attrs[] = {0x0, 0x4, 0x8, 0xc};
+  for (size_t attr_i = 0; attr_i < 4; attr_i++) {
+    for (size_t i = 0; i < 0x10000; i++) {
+      for (size_t j = 0; j < 8; j++) {
+        uint8_t clr = ((i >> (15 - j)) & 1) * 2;
+        clr += ((i >> (7 - j)) & 1);
+        ary[attr_i][i][j] = (clr != 0) ? (attrs[attr_i] | clr) : 0;
+      }
+    }
+  }
+  return ary;
+}();
+
 class PPU::Impl {
 public:
-  explicit Impl() : OutputPixels(256 * 240) {}
+  explicit Impl(std::vector<uint32_t> *palette);
+  void reset();
+  void updateOutputColor();
   void setupLut();
-  std::vector<uint8_t> OutputPixels;
-  std::array<uint32_t, 0x20> OutputColor{};
-  std::vector<uint32_t> *Palette{};
+
+private:
+  std::vector<uint8_t> output_pixels_;
+  std::array<uint32_t, 0x20> output_color_{};
+  std::vector<uint32_t> *palette_{};
+  std::array<uint8_t, 0x20> palette_ram_{};
+  uint8_t coloring_{};
+  uint32_t emphasis_{};
+  // clock management
+  size_t hclk_{};
+  size_t vclk_{};
+  size_t hclk_target_{};
+  // CPU-PPU interface
+  uint8_t io_latch_{};
+  uint8_t io_buffer_{};
+
+  uint8_t regs_oam_{};
+  // misc
+  uint8_t vram_addr_inc_{}; // 1 or 32
+  bool need_nmi_{};
+  uint16_t pattern_end_{};
+  bool any_show_{};
+  bool sp_overflow_{};
+  bool sp_zero_hit_{};
+  bool vblanking_{};
+  bool vblank_{};
+  // PPU-nametable interface
+  address_t io_addr_{};
+  uint8_t io_pattern_{};
+
+  // the current scanline
+  bool odd_frame_{};
+  int32_t scanline_{};
+
+  // scroll state
+  bool scroll_toggle_{};
+  address_t scroll_latch_{};
+  uint8_t scroll_xfine_{};
+  address_t scroll_addr_0_4_{};
+  address_t scroll_addr_5_14_{};
+  address_t name_io_addr_{};
+
+  // BG-sprite state
+  bool bg_enabled_{};
+  bool bg_show_{};
+  bool bg_show_edge_{};
+  std::array<uint8_t, 0x10> bg_pixels_{};
+  uint16_t bg_pattern_base_{}; // == 0 or 0x1000
+  uint16_t bg_pattern_base_15_{};
+  uint8_t bg_pattern_{};
+  const std::array<std::array<uint8_t, 8>, 0x10000> *bg_pattern_lut_{};
+  const std::array<std::array<uint8_t, 8>, 0x10000> *bg_pattern_lut_fetched_{};
+
+  // OAM-sprite state
+  bool sp_enabled_{};
+  bool sp_active_{};
+  bool sp_show_{};
+  bool sp_show_edge_{};
+
+  // for CPU-PPU interface
+  address_t sp_base_{};
+  uint8_t sp_height_{};
+
+  // for OAM fetcher
+  uint8_t sp_phase_{};
+  std::array<uint8_t, 0x100>
+      sp_ram_{}; // ram size is 0x100, 0xff is a OAM garbage
+  uint8_t sp_index_{};
+  address_t sp_addr_{};
+  uint8_t sp_latch_{};
+
+  // for internal state
+  // 8 sprites per line are allowed in standard NES, but a user may remove this
+  // limit.
 };
 
-void PPU::Impl::setupLut() {
+PPU::Impl::Impl(std::vector<uint32_t> *palette)
+    : output_pixels_(256 * 240), palette_(palette) {
+  this->output_color_.fill(palette->at(0));
+}
+
+void PPU::Impl::reset() {
+  this->palette_ram_ = {
+      0x3f, 0x01, 0x00, 0x01, 0x00, 0x02, 0x02, 0x0d, 0x08, 0x10, 0x08,
+      0x24, 0x00, 0x00, 0x04, 0x2c, 0x09, 0x01, 0x34, 0x03, 0x00, 0x04,
+      0x00, 0x14, 0x08, 0x3a, 0x00, 0x02, 0x00, 0x20, 0x2c, 0x08,
+  };
+  this->coloring_ = 0x3f; // not monochrome
+  this->emphasis_ = 0;
+  this->updateOutputColor();
+
+  // clock management
+  this->hclk_ = kHClockBoot;
+  this->vclk_ = 0;
+  this->hclk_target_ = kForeverClock;
+
+  // CPU-PPU interface
+  this->io_latch_ = 0;
+  this->io_buffer_ = 0xe8; // garbage
+
+  this->regs_oam_ = 0;
+
+  // misc
+  this->vram_addr_inc_ = 1; // 1 or 32
+  this->need_nmi_ = false;
+  this->pattern_end_ = 0x0ff0;
+  this->any_show_ = false; // == @bg_show || @sp_show
+  this->sp_overflow_ = false;
+  this->sp_zero_hit_ = false;
+  this->vblanking_ = false;
+  this->vblank_ = false;
+
+  // PPU-nametable interface
+  this->io_addr_ = 0;
+  this->io_pattern_ = 0;
+
+  // @a12_monitor = nil
+  // @a12_state = nil
+
+  // the current scanline
+  this->odd_frame_ = false;
+  this->scanline_ = kScanlineVBlank;
+
+  // scroll state
+  this->scroll_toggle_ = false;
+  this->scroll_latch_ = 0;
+  this->scroll_xfine_ = 0;
+  this->scroll_addr_0_4_ = 0;
+  this->scroll_addr_5_14_ = 0;
+  this->name_io_addr_ =
+      0x2000; // == (@scroll_addr_0_4 | @scroll_addr_5_14) & 0x0fff | 0x2000
+
+  // BG-sprite state
+  this->bg_enabled_ = false;
+  this->bg_show_ = false;
+  this->bg_show_edge_ = false;
+  this->bg_pixels_.fill(0);
+  this->bg_pattern_base_ = 0;    // == 0 or 0x1000
+  this->bg_pattern_base_15_ = 0; // == @bg_pattern_base[12] << 15
+  this->bg_pattern_ = 0;
+  this->bg_pattern_lut_ = &kTileLut[0];
+  this->bg_pattern_lut_fetched_ = &kTileLut[0];
+  // invariant:
+  //   @bg_pattern_lut_fetched == TILE_LUT[
+  //     @nmt_ref[@io_addr >> 10 & 3][@io_addr & 0x03ff] >>
+  //       ((@scroll_addr_0_4 & 0x2) | (@scroll_addr_5_14[6] * 0x4)) & 3
+  //   ]
+
+  // OAM-sprite state
+  this->sp_enabled_ = false;
+  this->sp_active_ = false; // == @sp_visible && @sp_enabled
+  this->sp_show_ = false;
+  this->sp_show_edge_ = false;
+
+  // for CPU-PPU interface
+  this->sp_base_ = 0;
+  this->sp_height_ = 8;
+
+  // for OAM fetcher
+  this->sp_phase_ = 0;
+  this->sp_ram_.fill(0xff); // ram size is 0x100, 0xff is a OAM garbage
+  this->sp_index_ = 0;
+  this->sp_addr_ = 0;
+  this->sp_latch_ = 0;
+
+  // for internal state
+  // 8 sprites per line are allowed in standard NES, but a user may remove this
+  // limit.
+  /*
+   @sp_limit = (@conf.sprite_limit ? 8 : 32) * 4
+   @sp_buffer = [0] * @sp_limit
+   @sp_buffered = 0
+   @sp_visible = false
+   @sp_map = [nil] * 264 # [[behind?, zero?, color]]
+   @sp_map_buffer = (0...264).map { [false, false, 0] } # preallocation for
+   @sp_map
+   @sp_zero_in_line = false
+   */
+}
+
+void PPU::Impl::updateOutputColor() {
+  for (size_t i = 0; i < 0x20; i++) {
+    uint8_t col = this->palette_ram_.at(i) & this->coloring_;
+    this->output_color_.at(i) = this->palette_->at(col | this->emphasis_);
+  }
+}
+
+void PPU::Impl::setupLut() { // TODO(tenmyo): PPU::Impl::setupLut()
   /*
   @lut_update = {}.compare_by_identity
 
@@ -52,14 +292,10 @@ void PPU::Impl::setupLut() {
 PPU::PPU(std::shared_ptr<Config> conf, std::shared_ptr<CPU> cpu,
          std::vector<uint32_t> *palette)
     : conf_(std::move(conf)), cpu_(std::move(cpu)),
-      p_(std::make_unique<Impl>()) {
-  this->p_->Palette = palette;
-
+      p_(std::make_unique<Impl>(palette)) {
+  // TODO(tenmyo): PPU::PPU()
   // @nmt_mem = [[0xff] * 0x400, [0xff] * 0x400]
   // @nmt_ref = [0, 1, 0, 1].map {|i| @nmt_mem[i] }
-
-  this->p_->OutputPixels.clear();
-  this->p_->OutputColor.fill(palette->at(0));
 
   this->reset();
   this->p_->setupLut();
@@ -68,9 +304,9 @@ PPU::PPU(std::shared_ptr<Config> conf, std::shared_ptr<CPU> cpu,
 PPU::~PPU() = default;
 
 void PPU::reset() {
-  /*
+#if 0 // TODO(tenmyo): PPU::reset()
   if opt.fetch(:mapping, true)
-    # setup mapped memory
+    // setup mapped memory
     @cpu.add_mappings(0x2000.step(0x3fff, 8), method(:peek_2xxx),
   method(:poke_2000))
     @cpu.add_mappings(0x2001.step(0x3fff, 8), method(:peek_2xxx),
@@ -90,104 +326,11 @@ void PPU::reset() {
     @cpu.add_mappings(0x3000, method(:peek_3000), method(:poke_2000))
     @cpu.add_mappings(0x4014, method(:peek_4014), method(:poke_4014))
   end
-
-  @palette_ram = [
-    0x3f, 0x01, 0x00, 0x01, 0x00, 0x02, 0x02, 0x0d,
-    0x08, 0x10, 0x08, 0x24, 0x00, 0x00, 0x04, 0x2c,
-    0x09, 0x01, 0x34, 0x03, 0x00, 0x04, 0x00, 0x14,
-    0x08, 0x3a, 0x00, 0x02, 0x00, 0x20, 0x2c, 0x08,
-  ]
-  @coloring = 0x3f # not monochrome
-  @emphasis = 0
-  update_output_color
-
-  # clock management
-  @hclk = HCLOCK_BOOT
-  @vclk = 0
-  @hclk_target = FOREVER_CLOCK
-
-  # CPU-PPU interface
-  @io_latch = 0
-  @io_buffer = 0xe8 # garbage
-
-  @regs_oam = 0
-
-  # misc
-  @vram_addr_inc = 1 # 1 or 32
-  @need_nmi = false
-  @pattern_end = 0x0ff0
-  @any_show = false # == @bg_show || @sp_show
-  @sp_overflow = false
-  @sp_zero_hit = false
-  @vblanking = @vblank = false
-
-  # PPU-nametable interface
-  @io_addr = 0
-  @io_pattern = 0
-
-  @a12_monitor = nil
-  @a12_state = nil
-
-  # the current scanline
-  @odd_frame = false
-  @scanline = SCANLINE_VBLANK
-
-  # scroll state
-  @scroll_toggle = false
-  @scroll_latch = 0
-  @scroll_xfine = 0
-  @scroll_addr_0_4 = @scroll_addr_5_14 = 0
-  @name_io_addr = 0x2000 # == (@scroll_addr_0_4 | @scroll_addr_5_14) & 0x0fff |
-  0x2000
-
-  ### BG-sprite state
-  @bg_enabled = false
-  @bg_show = false
-  @bg_show_edge = false
-  @bg_pixels = [0] * 16
-  @bg_pattern_base = 0 # == 0 or 0x1000
-  @bg_pattern_base_15 = 0 # == @bg_pattern_base[12] << 15
-  @bg_pattern = 0
-  @bg_pattern_lut = TILE_LUT[0]
-  @bg_pattern_lut_fetched = TILE_LUT[0]
-  # invariant:
-  #   @bg_pattern_lut_fetched == TILE_LUT[
-  #     @nmt_ref[@io_addr >> 10 & 3][@io_addr & 0x03ff] >>
-  #       ((@scroll_addr_0_4 & 0x2) | (@scroll_addr_5_14[6] * 0x4)) & 3
-  #   ]
-
-  ### OAM-sprite state
-  @sp_enabled = false
-  @sp_active = false # == @sp_visible && @sp_enabled
-  @sp_show = false
-  @sp_show_edge = false
-
-  # for CPU-PPU interface
-  @sp_base = 0
-  @sp_height = 8
-
-  # for OAM fetcher
-  @sp_phase = 0
-  @sp_ram = [0xff] * 0x100 # ram size is 0x100, 0xff is a OAM garbage
-  @sp_index = 0
-  @sp_addr = 0
-  @sp_latch = 0
-
-  # for internal state
-  # 8 sprites per line are allowed in standard NES, but a user may remove this
-  limit.
-  @sp_limit = (@conf.sprite_limit ? 8 : 32) * 4
-  @sp_buffer = [0] * @sp_limit
-  @sp_buffered = 0
-  @sp_visible = false
-  @sp_map = [nil] * 264 # [[behind?, zero?, color]]
-  @sp_map_buffer = (0...264).map { [false, false, 0] } # preallocation for
-  @sp_map
-  @sp_zero_in_line = false
-  */
+#endif
+  this->p_->reset();
 }
 
-void PPU::setupFrame() {
+void PPU::setupFrame() { // TODO(tenmyo): PPU::setupFrame()
   /*
   @output_pixels.clear
   @odd_frame = !@odd_frame
@@ -197,65 +340,9 @@ void PPU::setupFrame() {
 }
 
 #if 0
-#clock / timing constants(stolen from Nestopia)
-RP2C02_CC         = 4
-RP2C02_HACTIVE    = RP2C02_CC * 256
-RP2C02_HBLANK     = RP2C02_CC * 85
-RP2C02_HSYNC      = RP2C02_HACTIVE + RP2C02_HBLANK
-RP2C02_VACTIVE    = 240
-RP2C02_VSLEEP     = 1
-RP2C02_VINT       = 20
-RP2C02_VDUMMY     = 1
-RP2C02_VBLANK     = RP2C02_VSLEEP + RP2C02_VINT + RP2C02_VDUMMY
-RP2C02_VSYNC      = RP2C02_VACTIVE + RP2C02_VBLANK
-RP2C02_HVSYNCBOOT = RP2C02_VACTIVE * RP2C02_HSYNC + RP2C02_CC * 312
-RP2C02_HVINT      = RP2C02_VINT * RP2C02_HSYNC
-RP2C02_HVSYNC_0   = RP2C02_VSYNC * RP2C02_HSYNC
-RP2C02_HVSYNC_1   = RP2C02_VSYNC * RP2C02_HSYNC - RP2C02_CC
-
-#special scanlines
-SCANLINE_HDUMMY = -1  # pre-render scanline
-SCANLINE_VBLANK = 240 # post-render scanline
-
-#special horizontal clocks
-HCLOCK_DUMMY    = 341
-HCLOCK_VBLANK_0 = 681
-HCLOCK_VBLANK_1 = 682
-HCLOCK_VBLANK_2 = 684
-HCLOCK_BOOT     = 685
-DUMMY_FRAME = [RP2C02_HVINT / RP2C02_CC - HCLOCK_DUMMY, RP2C02_HVINT, RP2C02_HVSYNC_0]
-BOOT_FRAME = [RP2C02_HVSYNCBOOT / RP2C02_CC - HCLOCK_BOOT, RP2C02_HVSYNCBOOT, RP2C02_HVSYNCBOOT]
-
-#constants related to OAM(sprite)
-SP_PIXEL_POSITIONS = {
-  0 => [3, 7, 2, 6, 1, 5, 0, 4], # normal
-  1 => [4, 0, 5, 1, 6, 2, 7, 3], # flip
-}
-
-#A look - up table mapping : (two pattern bytes * attr)->eight pixels
-#TILE_LUT[attr][high_byte * 0x100 + low_byte] = [pixels] * 8
-TILE_LUT = [0x0, 0x4, 0x8, 0xc].map do |attr|
-  (0..7).map do |j|
-    (0...0x10000).map do |i|
-      clr = i[15 - j] * 2 + i[7 - j]
-      clr != 0 ? attr | clr : 0
-    end
-  end.transpose
-#Super dirty hack : This Array #transpose reduces page - faults.
-#It might generate cache - friendly memory layout...
-end
 
 def inspect
   "#<#{ self.class }>"
-end
-
-###########################################################################
-#initialization
-
-def update_output_color
-  0x20.times do |i|
-    @output_color[i] = @palette[@palette_ram[i] & @coloring | @emphasis]
-  end
 end
 
 ###########################################################################

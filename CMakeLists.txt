@@ -34,6 +34,7 @@ add_library(${PROJECT_NAME} SHARED ${SRCS})
 target_compile_options(${PROJECT_NAME}
   PRIVATE
   ${DEFAULT_COMPILE_OPTIONS}
+  "$<$<C_COMPILER_ID:Clang>:-fconstexpr-steps=167772160>"
 )
 target_include_directories(${PROJECT_NAME} PUBLIC "${PROJECT_SOURCE_DIR}/include")
 target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${SDL2_INCLUDE_DIRS}" "${SDL2IMAGE_INCLUDE_DIRS}")
