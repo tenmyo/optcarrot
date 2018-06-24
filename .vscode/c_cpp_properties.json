@@ -10,9 +10,7 @@
             },
             "includePath": [
                 "${workspaceFolder}/**",
-                "/usr/include/SDL2",
-                "/usr/include/c++/8.1.0/",
-                "/usr/include/"
+                "/usr/include/**"
             ],
             "defines": [],
             "compilerPath": "/bin/clang",

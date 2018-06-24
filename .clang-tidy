@@ -1,9 +1,21 @@
-Checks: '*,
+Checks: 'boost-*,
+         bugprone-*,
+         cert-*,
+         cppcoreguidelines-*,
          -cppcoreguidelines-pro-type-vararg,
+         clang-analyzer-*,
+         google-*
+         -google-build-using-namespace,
+         hicpp-*,
          -hicpp-signed-bitwise,
          -hicpp-vararg,
-         -google-build-using-namespace,
-         -fuchsia-*'
+         llvm-*,
+         misc-*,
+         modernize-*,
+         performance-*,
+         portability-*,
+         readability-*,
+         -readability-identifier-naming'
 WarningsAsErrors: ''
 HeaderFilterRegex: 'optcarrot*'
 AnalyzeTemporaryDtors: false
