@@ -22,31 +22,37 @@
           "focus": true,
           "panel": "shared"
         },
-        "problemMatcher": [{
-          "source": "clang-tidy",
-          "owner": "cpp",
-          "fileLocation": "absolute",
-          "pattern": {
-            "regexp": "^(/.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-            "file": 1,
-            "line": 2,
-            "column": 3,
-            "severity": 4,
-            "message": 5
+        "problemMatcher": [
+          {
+            "source": "clang-tidy",
+            "owner": "cpp",
+            "fileLocation": "absolute",
+            "pattern": {
+              "regexp": "^(/.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+              "file": 1,
+              "line": 2,
+              "column": 3,
+              "severity": 4,
+              "message": 5
+            }
+          },
+          {
+            "source": "build",
+            "owner": "cpp",
+            "fileLocation": [
+              "relative",
+              "${workspaceRoot}/build/"
+            ],
+            "pattern": {
+              "regexp": "^([^/].*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+              "file": 1,
+              "line": 2,
+              "column": 3,
+              "severity": 4,
+              "message": 5
+            }
           }
-        },{
-          "source": "build",
-          "owner": "cpp",
-          "fileLocation":  ["relative", "${workspaceRoot}/build"],
-          "pattern": {
-            "regexp": "^([^/].*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-            "file": 1,
-            "line": 2,
-            "column": 3,
-            "severity": 4,
-            "message": 5
-          }
-        }]
+        ]
       },
       {
         "label": "valgrind",

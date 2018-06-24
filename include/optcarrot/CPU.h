@@ -21,12 +21,15 @@ public:
 
   void reset();
 
+  // mapped memory API
   void
   addMappings(address_t begin, address_t end,
               const std::function<uint8_t(address_t addr)> &peek,
               const std::function<void(address_t addr, uint8_t data)> &poke);
 
+  // other APIs
   void setNextFrameClock(size_t clk);
+  void boot();
 
 private:
   class Impl;

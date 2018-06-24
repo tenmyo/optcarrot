@@ -37,6 +37,7 @@ private:
 
 void NES::Impl::step() {
   this->Ppu->setupFrame();
+  // TODO(tenmyo): NES::Impl::step
 #if 0
   @cpu.run
   @ppu.vsync
@@ -81,8 +82,8 @@ void NES::reset() {
   this->p_->Ppu->reset();
   this->p_->Rom->reset(this->p_->Cpu);
   this->p_->Pads->reset();
+  this->p_->Cpu->boot();
   /*
-  @cpu.boot
   @rom.load_battery
   */
 }

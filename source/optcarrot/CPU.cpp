@@ -16,6 +16,23 @@ using namespace optcarrot;
 
 using UNKNOWN = unsigned;
 
+static constexpr auto NMI_VECTOR = 0xfffa;
+static constexpr auto RESET_VECTOR = 0xfffc;
+static constexpr auto IRQ_VECTOR = 0xfffe;
+
+static constexpr auto IRQ_EXT = 0x01;
+static constexpr auto IRQ_FRAME = 0x40;
+static constexpr auto IRQ_DMC = 0x80;
+
+static constexpr auto CLK_1 = 1 * kRP2A03CC;
+static constexpr auto CLK_2 = 2 * kRP2A03CC;
+static constexpr auto CLK_3 = 3 * kRP2A03CC;
+static constexpr auto CLK_4 = 4 * kRP2A03CC;
+static constexpr auto CLK_5 = 5 * kRP2A03CC;
+static constexpr auto CLK_6 = 6 * kRP2A03CC;
+static constexpr auto CLK_7 = 7 * kRP2A03CC;
+static constexpr auto CLK_8 = 8 * kRP2A03CC;
+
 class CPU::Impl {
 public:
   explicit Impl() = default;
@@ -36,17 +53,6 @@ public:
   }
 
 public:
-#if 0
-    NMI_VECTOR   = 0xfffa
-    RESET_VECTOR = 0xfffc
-    IRQ_VECTOR   = 0xfffe
-
-    IRQ_EXT   = 0x01
-    IRQ_FRAME = 0x40
-    IRQ_DMC   = 0x80
-
-    CLK_1, CLK_2, CLK_3, CLK_4, CLK_5, CLK_6, CLK_7, CLK_8 = (1..8).map {|i| i * RP2A03_CC }
-#endif
   // main memory
   std::array<std::function<uint8_t(address_t addr)>, 0x10000> fetch_{};
   std::array<std::function<void(address_t addr, uint8_t data)>, 0x10000>
@@ -91,6 +97,7 @@ public:
   UNKNOWN opcode_{};
   bool ppu_sync_{};
 #endif
+  address_t _pc_{};
 };
 
 void CPU::Impl::reset() {
@@ -169,6 +176,11 @@ void CPU::setNextFrameClock(size_t clk) {
     this->p_->clk_target_ = clk;
   }
 }
+
+void CPU::boot() {
+  this->p_->clk_ = CLK_7;
+  this->p_->_pc_ = this->p_->peek16(RESET_VECTOR);
+}
 #if 0
 ###########################################################################
 #other APIs
@@ -208,9 +220,6 @@ def sprite_dma(addr, sp_ram)
 end
 
 def boot
-  @clk = CLK_7
-  @_pc = peek16(RESET_VECTOR)
-end
 
 def vsync
   @ppu.sync(@clk) if @ppu_sync
