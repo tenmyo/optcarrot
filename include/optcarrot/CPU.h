@@ -26,6 +26,8 @@ public:
               const std::function<uint8_t(address_t addr)> &peek,
               const std::function<void(address_t addr, uint8_t data)> &poke);
 
+  void setNextFrameClock(size_t clk);
+
 private:
   class Impl;
   std::shared_ptr<Config> conf_;

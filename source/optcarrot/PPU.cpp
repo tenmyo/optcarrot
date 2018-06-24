@@ -17,6 +17,24 @@
 #include <vector>
 
 using namespace optcarrot;
+
+// clock / timing constants(stolen from Nestopia)
+static constexpr auto RP2C02_CC = 4;
+static constexpr auto RP2C02_HACTIVE = RP2C02_CC * 256;
+static constexpr auto RP2C02_HBLANK = RP2C02_CC * 85;
+static constexpr auto RP2C02_HSYNC = RP2C02_HACTIVE + RP2C02_HBLANK;
+static constexpr auto RP2C02_VACTIVE = 240;
+static constexpr auto RP2C02_VSLEEP = 1;
+static constexpr auto RP2C02_VINT = 20;
+static constexpr auto RP2C02_VDUMMY = 1;
+static constexpr auto RP2C02_VBLANK =
+    RP2C02_VSLEEP + RP2C02_VINT + RP2C02_VDUMMY;
+static constexpr auto RP2C02_VSYNC = RP2C02_VACTIVE + RP2C02_VBLANK;
+static constexpr auto RP2C02_HVSYNCBOOT =
+    RP2C02_VACTIVE * RP2C02_HSYNC + RP2C02_CC * 312;
+static constexpr auto RP2C02_HVINT = RP2C02_VINT * RP2C02_HSYNC;
+static constexpr auto RP2C02_HVSYNC_0 = RP2C02_VSYNC * RP2C02_HSYNC;
+static constexpr auto RP2C02_HVSYNC_1 = RP2C02_VSYNC * RP2C02_HSYNC - RP2C02_CC;
 /*
 #clock / timing constants(stolen from Nestopia)
 RP2C02_CC         = 4
@@ -44,6 +62,11 @@ static constexpr auto kHClockVblank0 = 681;
 static constexpr auto kHClockVblank1 = 682;
 static constexpr auto kHClockVblank2 = 684;
 static constexpr auto kHClockBoot = 685;
+static constexpr std::tuple DUMMY_FRAME = {
+    RP2C02_HVINT / RP2C02_CC - kHClockDummy, RP2C02_HVINT, RP2C02_HVSYNC_0};
+static constexpr std::tuple BOOT_FRAME = {RP2C02_HVSYNCBOOT / RP2C02_CC -
+                                              kHClockBoot,
+                                          RP2C02_HVSYNCBOOT, RP2C02_HVSYNCBOOT};
 // DUMMY_FRAME = [RP2C02_HVINT / RP2C02_CC - HCLOCK_DUMMY, RP2C02_HVINT,
 // RP2C02_HVSYNC_0] BOOT_FRAME = [RP2C02_HVSYNCBOOT / RP2C02_CC - HCLOCK_BOOT,
 // RP2C02_HVSYNCBOOT, RP2C02_HVSYNCBOOT]
@@ -66,7 +89,7 @@ static constexpr auto kTileLut = [] {
       for (size_t j = 0; j < 8; j++) {
         uint8_t clr = ((i >> (15 - j)) & 1) * 2;
         clr += ((i >> (7 - j)) & 1);
-        ary[attr_i][i][j] = (clr != 0) ? (attrs[attr_i] | clr) : 0;
+        ary.at(attr_i).at(i).at(j) = (clr != 0) ? (attrs[attr_i] | clr) : 0;
       }
     }
   }
@@ -79,6 +102,7 @@ public:
   void reset();
   void updateOutputColor();
   void setupLut();
+  size_t setupFrame();
 
 private:
   std::vector<uint8_t> output_pixels_;
@@ -298,6 +322,19 @@ void PPU::Impl::setupLut() { // TODO(tenmyo): PPU::Impl::setupLut()
   */
 }
 
+size_t PPU::Impl::setupFrame() {
+  this->output_pixels_.clear();
+  this->odd_frame_ ^= 1;
+  if (this->hclk_ == kHClockDummy) {
+    this->vclk_ = std::get<0>(DUMMY_FRAME);
+    this->hclk_target_ = std::get<1>(DUMMY_FRAME);
+    return std::get<2>(DUMMY_FRAME);
+  }
+  this->vclk_ = std::get<0>(BOOT_FRAME);
+  this->hclk_target_ = std::get<1>(BOOT_FRAME);
+  return std::get<2>(BOOT_FRAME);
+}
+
 PPU::PPU(const std::shared_ptr<Config> &conf, std::shared_ptr<CPU> cpu,
          std::vector<uint32_t> *palette)
     : cpu_(std::move(cpu)),
@@ -339,17 +376,12 @@ void PPU::reset() {
   this->p_->reset();
 }
 
-void PPU::setupFrame() { // TODO(tenmyo): PPU::setupFrame()
-  /*
-  @output_pixels.clear
-  @odd_frame = !@odd_frame
-  @vclk, @hclk_target, @cpu.next_frame_clock = @hclk == HCLOCK_DUMMY ?
-  DUMMY_FRAME : BOOT_FRAME
-  */
+void PPU::setupFrame() {
+  auto next_frame_clock = this->p_->setupFrame();
+  this->cpu_->setNextFrameClock(next_frame_clock);
 }
 
 #if 0
-
 def inspect
   "#<#{ self.class }>"
 end
@@ -742,7 +774,7 @@ def fetch_attr
   return unless @any_show
   @bg_pattern_lut = @bg_pattern_lut_fetched
 #raise unless @bg_pattern_lut_fetched ==
-#@nmt_ref[@io_addr>> 10 & 3][@io_addr & 0x03ff]>>
+  #@nmt_ref[@io_addr>> 10 & 3][@io_addr & 0x03ff]>>
 #((@scroll_addr_0_4 & 0x2) |(@scroll_addr_5_14[6] * 0x4)) & 3
 end
 
@@ -823,13 +855,13 @@ def evaluate_sprites_odd
       case @sp_phase
 #when 1 then evaluate_sprites_odd_phase_1
 #when 9 then evaluate_sprites_odd_phase_9
-      when 2 then evaluate_sprites_odd_phase_2
-      when 3 then evaluate_sprites_odd_phase_3
-      when 4 then evaluate_sprites_odd_phase_4
-      when 5 then evaluate_sprites_odd_phase_5
-      when 6 then evaluate_sprites_odd_phase_6
-      when 7 then evaluate_sprites_odd_phase_7
-      when 8 then evaluate_sprites_odd_phase_8
+        when 2 then evaluate_sprites_odd_phase_2
+        when 3 then evaluate_sprites_odd_phase_3
+        when 4 then evaluate_sprites_odd_phase_4
+        when 5 then evaluate_sprites_odd_phase_5
+        when 6 then evaluate_sprites_odd_phase_6
+        when 7 then evaluate_sprites_odd_phase_7
+        when 8 then evaluate_sprites_odd_phase_8
       end
     end
   else

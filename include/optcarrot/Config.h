@@ -11,8 +11,9 @@ public:
   explicit Config(int /*argc*/, const char * /*unused*/ []) {}
   size_t Frames{200};
   bool UseNestopiaPalette{};
+  bool SpriteLimit{};
+  // TODO(tenmyo): Config: Config
 #if 0
-
     OPTIONS = {
       emulation: {
         sprite_limit:      { type: :switch, desc: "enable/disable sprite limit", default: false },

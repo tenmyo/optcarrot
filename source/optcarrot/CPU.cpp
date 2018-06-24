@@ -35,7 +35,7 @@ public:
            static_cast<uint16_t>(this->fetch(addr + 1) << 8);
   }
 
-private:
+public:
 #if 0
     NMI_VECTOR   = 0xfffa
     RESET_VECTOR = 0xfffc
@@ -54,12 +54,12 @@ private:
   std::array<uint8_t, 0x800> ram_{};
   // # clock management
   /// the current clock
-  UNKNOWN clk_{};
-#if 0
+  size_t clk_{};
   /// the next frame clock
-  UNKNOWN clk_frame_{};
+  size_t clk_frame_{};
   /// the goal clock for the current CPU#run
-  UNKNOWN clk_target_{};
+  size_t clk_target_{};
+#if 0
   /// the next NMI clock (FOREVER_CLOCK means "not scheduled")
   UNKNOWN clk_nmi_{kForeverClock};
   /// the next IRQ clock
@@ -162,6 +162,13 @@ void CPU::addMappings(
     const std::function<void(address_t addr, uint8_t data)> &poke) {
   this->p_->addMappings(begin, end, peek, poke);
 }
+
+void CPU::setNextFrameClock(size_t clk) {
+  this->p_->clk_frame_ = clk;
+  if (clk < this->p_->clk_target_) {
+    this->p_->clk_target_ = clk;
+  }
+}
 #if 0
 ###########################################################################
 #other APIs
@@ -171,15 +178,6 @@ attr_writer :apu, :ppu, :ppu_sync
 
 def current_clock
   @clk
-end
-
-def next_frame_clock
-  @clk_frame
-end
-
-def next_frame_clock=(clk)
-  @clk_frame = clk
-  @clk_target = clk if clk < @clk_target
 end
 
 def steal_clocks(clk)
