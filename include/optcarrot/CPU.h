@@ -5,6 +5,7 @@
 #include <memory>
 
 namespace optcarrot {
+class APU;
 class Config;
 
 /// CPU implementation
@@ -28,8 +29,18 @@ public:
               const std::function<void(address_t addr, uint8_t data)> &poke);
 
   // other APIs
+  size_t current_clock();
   void setNextFrameClock(size_t clk);
   void boot();
+
+  // interrupts
+  // instruction helpers
+  // addressing modes
+  // instructions
+  // default core
+  void run();
+
+  void setAPU(std::shared_ptr<APU> apu);
 
 private:
   class Impl;

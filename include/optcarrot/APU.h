@@ -4,11 +4,12 @@
 
 namespace optcarrot {
 class Config;
+class CPU;
 
 /// APU implementation (audio output)
 class APU {
 public:
-  explicit APU(std::shared_ptr<Config> conf);
+  explicit APU(std::shared_ptr<Config> conf, std::shared_ptr<CPU> cpu);
   ~APU();
   // disallow copy
   APU(const APU &) = delete;
@@ -18,6 +19,10 @@ public:
   APU &operator=(APU &&) noexcept = default;
 
   void reset();
+
+  // other APIs
+  size_t do_clock();
+  void clock_dma(size_t clk);
 
 private:
   class Impl;
