@@ -83,9 +83,7 @@ void NES::reset() {
   this->p_->Rom->reset(this->p_->Cpu);
   this->p_->Pads->reset();
   this->p_->Cpu->boot();
-  /*
-  @rom.load_battery
-  */
+  this->p_->Rom->load_battery();
 }
 
 void NES::run() {

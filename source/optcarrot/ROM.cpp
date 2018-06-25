@@ -29,9 +29,43 @@ class NotImplementedError : std::runtime_error {
   using std::runtime_error::runtime_error;
 };
 
+static std::vector<uint8_t> file_read(const std::string &fname) {
+  using namespace std::literals::string_literals;
+  std::filesystem::path p(fname);
+  auto size = std::filesystem::file_size(p);
+  std::ifstream ifs(fname, std::ios_base::in | std::ios::binary);
+  if (!ifs) {
+    throw std::runtime_error("failed to open a file: "s + fname);
+  }
+  std::vector<uint8_t> buf(size);
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+  ifs.read(reinterpret_cast<char *>(buf.data()),
+           static_cast<std::streamsize>(size));
+  if (!ifs.good()) {
+    throw std::runtime_error("failed to read a file: "s + fname);
+  }
+  return buf;
+}
+
+static void file_write(const std::string &fname,
+                       const std::vector<uint8_t> &buf) {
+  using namespace std::literals::string_literals;
+  std::ofstream ofs(fname, std::ios::binary);
+  if (!ofs) {
+    throw std::runtime_error("failed to open a file: "s + fname);
+  }
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+  ofs.write(reinterpret_cast<const char *>(buf.data()),
+            static_cast<std::streamsize>(buf.size()));
+  if (!ofs.good()) {
+    throw std::runtime_error("failed to write a file: "s + fname);
+  }
+}
+
 class ROM::Impl {
 public:
-  explicit Impl(std::string basename) : Basename(std::move(basename)) {}
+  explicit Impl(std::string basename)
+      : Basename(std::move(basename)), wrk(0x2000) {}
   std::string Basename;
   MirroringKind Mirroring{MirroringKind::kNone};
   bool Battery{};
@@ -41,6 +75,7 @@ public:
   bool ChrRam{};
   bool WrkReadable{};
   bool WrkWritable{};
+  std::vector<uint8_t> wrk;
 
   void parseHeader(const std::vector<uint8_t> &buf, uint8_t *prg_banks,
                    uint8_t *chr_banks, uint8_t *ram_banks);
@@ -116,7 +151,6 @@ ROM::ROM(std::shared_ptr<Config> conf, std::string basename,
 
   this->p_->WrkReadable = (wrk_count > 0);
   this->p_->WrkWritable = false;
-  // @wrk = wrk_count > 0 ? (0x6000..0x7fff).map {|addr| addr >> 8 } : nil
 
   /*
   @ppu.nametables = @mirroring
@@ -139,60 +173,29 @@ void ROM::reset(const std::shared_ptr<CPU> &cpu) {
                    [&](address_t, uint8_t) {});
 }
 
-std::unique_ptr<ROM> ROM::load(std::shared_ptr<Config> conf) {
-  std::filesystem::path p("_ruby/examples/Lan_Master.nes",
-                          std::filesystem::path::auto_format);
-  auto size = std::filesystem::file_size(p);
-  std::ifstream ifs(p, std::ios_base::in | std::ios::binary);
-  std::vector<uint8_t> buf(size);
-  if (!ifs) {
-    throw std::runtime_error("failed to open a ROM file.");
+void ROM::load_battery() {
+  if (!this->p_->Battery) {
+    return;
   }
-  ifs.read(reinterpret_cast<char *>(buf.data()),
-           static_cast<std::streamsize>(size));
-  if (!ifs.good()) {
-    std::cerr << "error: only " << ifs.gcount() << " could be read"
-              << std::endl;
-    throw std::runtime_error("failed to read a ROM file.");
+  auto p = this->p_->Basename + ".sav";
+  if (!std::filesystem::exists(p)) {
+    return;
   }
-
-  return std::make_unique<ROM>(std::move(conf), p.filename(), buf);
+  this->p_->wrk = file_read(p);
 }
 
-#if 0
-  def inspect
-    [
-      "Mapper: #{ @mapper } (#{ self.class.to_s.split("::").last })",
-      "PRG Banks: #{ @prg_banks.size }",
-      "CHR Banks: #{ @chr_banks.size }",
-      "Mirroring: #{ @mirroring }",
-    ].join("\n")
-  end
+void ROM::save_battery() {
+  if (!this->p_->Battery) {
+    return;
+  }
+  auto p = this->p_->Basename + ".sav";
+  if (!std::filesystem::exists(p)) {
+    return;
+  }
+  file_write(p, this->p_->wrk);
+}
 
-  def peek_6000(addr)
-    @wrk_readable ? @wrk[addr - 0x6000] : (addr >> 8)
-  end
-
-  def poke_6000(addr, data)
-    @wrk[addr - 0x6000] = data if @wrk_writable
-  end
-
-  def vsync
-  end
-
-  def load_battery
-    return unless @battery
-    sav = @basename + ".sav"
-    return unless File.readable?(sav)
-    sav = File.binread(sav)
-    @wrk.replace(sav.bytes)
-  end
-
-  def save_battery
-    return unless @battery
-    sav = @basename + ".sav"
-    puts "Saving: " + sav
-    File.binwrite(sav, @wrk.pack("C*"))
-  end
-end
-#endif
+std::unique_ptr<ROM> ROM::load(std::shared_ptr<Config> conf) {
+  std::filesystem::path p("_ruby/examples/Lan_Master.nes");
+  return std::make_unique<ROM>(std::move(conf), p.filename(), file_read(p));
+}

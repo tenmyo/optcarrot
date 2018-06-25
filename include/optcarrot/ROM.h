@@ -22,7 +22,10 @@ public:
   ROM &operator=(ROM &&) noexcept = default;
 
   void reset(const std::shared_ptr<CPU> &cpu);
+  void load_battery();
+  void save_battery();
 
+public:
   static std::unique_ptr<ROM> load(std::shared_ptr<Config> conf);
 
   enum class MirroringKind { kNone, kHorizontal, kVertical, kFourScreen };
