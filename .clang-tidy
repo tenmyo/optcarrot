@@ -4,6 +4,7 @@ Checks: 'boost-*,
          cppcoreguidelines-*,
          -cppcoreguidelines-pro-type-vararg,
          clang-analyzer-*,
+         -fuchsia-*,
          google-*
          -google-build-using-namespace,
          hicpp-*,
@@ -12,10 +13,13 @@ Checks: 'boost-*,
          llvm-*,
          misc-*,
          modernize-*,
+         -mpi-*,
+         -objc-*,
          performance-*,
          portability-*,
          readability-*,
-         -readability-identifier-naming'
+         -readability-identifier-naming,
+         -zircon-*'
 WarningsAsErrors: ''
 HeaderFilterRegex: 'optcarrot*'
 AnalyzeTemporaryDtors: false
