@@ -207,7 +207,7 @@ void PPU::Impl::reset() {
   // clock management
   this->hclk_ = kHClockBoot;
   this->vclk_ = 0;
-  this->hclk_target_ = kForeverClock;
+  this->hclk_target_ = FOREVER_CLOCK;
 
   // CPU-PPU interface
   this->io_latch_ = 0;

@@ -23,6 +23,8 @@ public:
   // other APIs
   size_t do_clock();
   void clock_dma(size_t clk);
+  void vsync();
+  // poke_4017
 
 private:
   class Impl;

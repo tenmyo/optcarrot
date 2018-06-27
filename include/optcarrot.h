@@ -5,8 +5,8 @@
 #include <vector>
 
 namespace optcarrot {
-constexpr auto kForeverClock = 0xffffffff;
-constexpr auto kRP2A03CC = 12;
+constexpr auto FOREVER_CLOCK = 0xffffffff;
+constexpr auto RP2A03_CC = 12;
 
 using address_t = uint16_t;
 

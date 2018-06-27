@@ -25,14 +25,14 @@ static constexpr auto IRQ_EXT = 0x01;
 static constexpr auto IRQ_FRAME = 0x40;
 static constexpr auto IRQ_DMC = 0x80;
 
-static constexpr auto CLK_1 = 1 * kRP2A03CC;
-static constexpr auto CLK_2 = 2 * kRP2A03CC;
-static constexpr auto CLK_3 = 3 * kRP2A03CC;
-static constexpr auto CLK_4 = 4 * kRP2A03CC;
-static constexpr auto CLK_5 = 5 * kRP2A03CC;
-static constexpr auto CLK_6 = 6 * kRP2A03CC;
-static constexpr auto CLK_7 = 7 * kRP2A03CC;
-static constexpr auto CLK_8 = 8 * kRP2A03CC;
+static constexpr auto CLK_1 = 1 * RP2A03_CC;
+static constexpr auto CLK_2 = 2 * RP2A03_CC;
+static constexpr auto CLK_3 = 3 * RP2A03_CC;
+static constexpr auto CLK_4 = 4 * RP2A03_CC;
+static constexpr auto CLK_5 = 5 * RP2A03_CC;
+static constexpr auto CLK_6 = 6 * RP2A03_CC;
+static constexpr auto CLK_7 = 7 * RP2A03_CC;
+static constexpr auto CLK_8 = 8 * RP2A03_CC;
 
 class CPU::Impl {
 public:
@@ -74,9 +74,9 @@ public:
   size_t clk_target{};
 #if 0
   /// the next NMI clock (FOREVER_CLOCK means "not scheduled")
-  UNKNOWN clk_nmi{kForeverClock};
+  UNKNOWN clk_nmi{FOREVER_CLOCK};
   /// the next IRQ clock
-  UNKNOWN clk_irq{kForeverClock};
+  UNKNOWN clk_irq{FOREVER_CLOCK};
 #endif
   /// the total elapsed clocks
   UNKNOWN clk_total{};
