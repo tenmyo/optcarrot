@@ -17,9 +17,9 @@ using namespace optcarrot;
 
 using UNKNOWN = unsigned;
 
-static constexpr auto NMI_VECTOR = 0xfffa;
-static constexpr auto RESET_VECTOR = 0xfffc;
-static constexpr auto IRQ_VECTOR = 0xfffe;
+static constexpr address_t NMI_VECTOR = 0xfffa;
+static constexpr address_t RESET_VECTOR = 0xfffc;
+static constexpr address_t IRQ_VECTOR = 0xfffe;
 
 static constexpr auto IRQ_EXT = 0x01;
 static constexpr auto IRQ_FRAME = 0x40;
@@ -39,6 +39,8 @@ public:
   explicit Impl() = default;
   // # methods
   void reset();
+
+  // mapped memory API
   void
   addMappings(address_t begin, address_t end,
               const std::function<uint8_t(address_t addr)> &peek,
@@ -53,9 +55,16 @@ public:
            static_cast<uint16_t>(this->fetch(addr + 1) << 8);
   }
 
+  // other APIs
+  // interrupts
+
+  // default core
   void run();
 
 private:
+  // interrupts
+  void do_isr(address_t vector);
+  // default core
   void do_clock();
 
 public:
@@ -72,19 +81,17 @@ public:
   size_t clk_frame{};
   /// the goal clock for the current CPU#run
   size_t clk_target{};
-#if 0
   /// the next NMI clock (FOREVER_CLOCK means "not scheduled")
-  UNKNOWN clk_nmi{FOREVER_CLOCK};
+  size_t clk_nmi{FOREVER_CLOCK};
   /// the next IRQ clock
-  UNKNOWN clk_irq{FOREVER_CLOCK};
-#endif
+  size_t clk_irq{FOREVER_CLOCK};
   /// the total elapsed clocks
-  UNKNOWN clk_total{};
-#if 0
+  size_t clk_total{};
   // #interrupt
+#if 0
   UNKNOWN irq_flags_{};
-  bool jammed_{};
 #endif
+  bool jammed{};
   // # registers
   UNKNOWN reg_a{};
   UNKNOWN reg_x{};
@@ -161,29 +168,6 @@ void CPU::Impl::addMappings(
   }
 }
 
-void CPU::Impl::do_clock() { // TODO(tenmyo): CPU::Impl::do_clock()
-  auto clock = this->apu->do_clock();
-}
-#if 0
-clock = @apu.do_clock
-
-clock = @clk_frame if clock > @clk_frame
-
-if @clk < @clk_nmi
-  clock = @clk_nmi if clock > @clk_nmi
-  if @clk < @clk_irq
-    clock = @clk_irq if clock > @clk_irq
-  else
-    @clk_irq = FOREVER_CLOCK
-    do_isr(IRQ_VECTOR)
-  end
-else
-  @clk_nmi = @clk_irq = FOREVER_CLOCK
-  do_isr(NMI_VECTOR)
-end
-@clk_target = clock
-#endif
-
 void CPU::Impl::run() { // TODO(tenmyo): CPU::Impl::run()
   this->do_clock();
   do {
@@ -208,6 +192,46 @@ void CPU::Impl::run() { // TODO(tenmyo): CPU::Impl::run()
   } while (this->clk < this->clk_frame);
 }
 
+void CPU::Impl::do_isr(address_t /*vector*/) {
+  // TODO(tenmyo): CPU::Impl::do_isr()
+  if (this->jammed) {
+    return;
+  }
+  // push16(@_pc)
+  // push8(flags_pack)
+  // @_p_i = 0x04
+  this->clk += CLK_7;
+  // addr = vector == NMI_VECTOR ? NMI_VECTOR : fetch_irq_isr_vector
+  // @_pc = peek16(addr)
+}
+
+void CPU::Impl::do_clock() { // TODO(tenmyo): CPU::Impl::do_clock()
+  auto clock = this->apu->do_clock();
+
+  if (clock > this->clk_frame) {
+    clock = this->clk_frame;
+  }
+
+  if (this->clk < this->clk_nmi) {
+    if (clock > this->clk_nmi) {
+      clock = this->clk_nmi;
+    }
+    if (this->clk < this->clk_irq) {
+      if (clock > this->clk_irq) {
+        clock = this->clk_irq;
+      }
+    } else {
+      this->clk_irq = FOREVER_CLOCK;
+      // do_isr(IRQ_VECTOR)
+    }
+  } else {
+    this->clk_nmi = FOREVER_CLOCK;
+    this->clk_irq = FOREVER_CLOCK;
+    // do_isr(NMI_VECTOR)
+  }
+  this->clk_target = clock;
+}
+
 CPU::CPU(std::shared_ptr<Config> conf)
     : conf_(std::move(conf)), p_(std::make_unique<Impl>()) {
   this->reset();
@@ -226,7 +250,8 @@ void CPU::addMappings(
 
 size_t CPU::current_clock() { return this->p_->clk; }
 
-void CPU::setNextFrameClock(size_t clk) {
+size_t CPU::nextFrameClock() { return this->p_->clk_frame; }
+void CPU::nextFrameClock(size_t clk) {
   this->p_->clk_frame = clk;
   if (clk < this->p_->clk_target) {
     this->p_->clk_target = clk;

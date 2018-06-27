@@ -30,17 +30,28 @@ public:
 
   // other APIs
   size_t current_clock();
-  void setNextFrameClock(size_t clk);
+  size_t nextFrameClock();
+  void nextFrameClock(size_t clk);
+  void steal_clocks(size_t clk);
+  bool odd_clock();
+  size_t update();
+  // dmc_dma
+  // sprite_dma
   void boot();
+  // vsync
 
   // interrupts
-  // instruction helpers
-  // addressing modes
-  // instructions
+  // clear_irq
+  // do_irq
+  // do_nmi
+
   // default core
   void run();
 
   void setAPU(std::shared_ptr<APU> apu);
+
+private:
+  // default core
 
 private:
   class Impl;

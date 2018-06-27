@@ -378,7 +378,7 @@ void PPU::reset() {
 
 void PPU::setupFrame() {
   auto next_frame_clock = this->p_->setupFrame();
-  this->cpu_->setNextFrameClock(next_frame_clock);
+  this->cpu_->nextFrameClock(next_frame_clock);
 }
 
 #if 0
