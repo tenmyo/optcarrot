@@ -144,6 +144,10 @@ public:
   bool ppu_sync{};
 
 private:
+  // ### storers ###
+  static void store_mem(CPU::Impl &cpu);
+  static void store_zpg(CPU::Impl &cpu);
+
   // addressing modes
   // immediate addressing (read only)
   static void am_imm(CPU::Impl &cpu, bool read, bool write);
@@ -262,6 +266,13 @@ private:
 private:
   static const std::array<std::function<void(CPU::Impl &)>, 0x100> DISPATCH;
 };
+
+void CPU::Impl::store_mem(CPU::Impl &cpu) {
+  cpu.store(cpu.addr, cpu.data);
+  cpu.clk += CLK_1;
+}
+
+void CPU::Impl::store_zpg(CPU::Impl &cpu) { cpu.ram[cpu.addr] = cpu.data; }
 
 void CPU::Impl::am_imm(CPU::Impl &cpu, bool /*read*/, bool /*write*/) {
   cpu.data = cpu.fetch(cpu._pc);
@@ -389,17 +400,10 @@ const std::array<std::function<void(CPU::Impl &)>, 0x100> CPU::Impl::DISPATCH =
           {am_ind_x, am_zpg, am_imm, am_abs, am_ind_y, am_zpg_y, am_abs_y,
            am_abs_y},
       };
+      std::function<void(CPU::Impl &)> STORE[8] = {
+          store_mem, store_zpg, store_mem, store_mem,
+          nullptr,   store_zpg, nullptr,   store_mem};
       std::array<std::function<void(CPU::Impl &)>, 0x100> ary{};
-      auto op1 = [&](std::vector<uint8_t> opcodes, std::vector<uint8_t> args) {
-        for (const auto &opcode_ : opcodes) {
-          auto kind = args[0];
-          auto op_ = args[1];
-          auto mode = ADDRESSING_MODES[args[2]][opcode_ >> 2 & 7];
-          // send_args = [kind, op, mode]
-          // send_args << (mode.to_s.start_with?("zpg") ? :store_zpg :
-          // :store_mem) if kind != :r_op ary[opcode_] = send_args
-        }
-      };
       auto op2 = [&](std::vector<uint8_t> opcodes,
                      std::function<void(CPU::Impl &)> func) {
         for (const auto &opcode_ : opcodes) {
@@ -417,14 +421,59 @@ const std::array<std::function<void(CPU::Impl &)>, 0x100> CPU::Impl::DISPATCH =
           };
         }
       };
+      auto op_w = [&](std::vector<uint8_t> opcodes,
+                      std::function<void(CPU::Impl &)> op,
+                      enum ADDRESSING_MODE modenum) {
+        for (const auto &opcode_ : opcodes) {
+          auto mode = ADDRESSING_MODES[modenum][opcode_ >> 2 & 7];
+          auto store = STORE[opcode_ >> 2 & 7];
+          ary[opcode_] = [op, mode, store](CPU::Impl &cpu) {
+            mode(cpu, false, true);
+            op(cpu);
+            store(cpu);
+          };
+        }
+      };
+      auto op_rw = [&](std::vector<uint8_t> opcodes,
+                       std::function<void(CPU::Impl &)> op,
+                       enum ADDRESSING_MODE modenum) {
+        for (const auto &opcode_ : opcodes) {
+          auto mode = ADDRESSING_MODES[modenum][opcode_ >> 2 & 7];
+          auto store = STORE[opcode_ >> 2 & 7];
+          ary[opcode_] = [op, mode, store](CPU::Impl &cpu) {
+            mode(cpu, true, true);
+            op(cpu);
+            store(cpu);
+          };
+        }
+      };
+      auto op_a = [&](std::vector<uint8_t> opcodes,
+                      std::function<void(CPU::Impl &)> op) {
+        for (const auto &opcode_ : opcodes) {
+          ary[opcode_] = [op](CPU::Impl &cpu) {
+            cpu.clk += CLK_2;
+            cpu.data = cpu._a;
+            op(cpu);
+            cpu._a = cpu.data;
+          };
+        }
+      };
+      auto op_n = [&](std::vector<uint8_t> opcodes, uint8_t ops, size_t ticks) {
+        for (const auto &opcode_ : opcodes) {
+          ary[opcode_] = [ops, ticks](CPU::Impl &cpu) {
+            cpu._pc += ops;
+            cpu.clk += ticks * RP2A03_CC;
+          };
+        }
+      };
       // load instructions
       op_r({0xa9, 0xa5, 0xb5, 0xad, 0xbd, 0xb9, 0xa1, 0xb1}, _lda, alu);
       op_r({0xa2, 0xa6, 0xb6, 0xae, 0xbe}, _ldx, rmw);
       op_r({0xa0, 0xa4, 0xb4, 0xac, 0xbc}, _ldy, ctl);
       // store instructions
-      op1({0x85, 0x95, 0x8d, 0x9d, 0x99, 0x81, 0x91}, {w_op, _sta, alu});
-      op1({0x86, 0x96, 0x8e}, {w_op, _stx, rmw});
-      op1({0x84, 0x94, 0x8c}, {w_op, _sty, ctl});
+      op_w({0x85, 0x95, 0x8d, 0x9d, 0x99, 0x81, 0x91}, _sta, alu);
+      op_w({0x86, 0x96, 0x8e}, _stx, rmw);
+      op_w({0x84, 0x94, 0x8c}, _sty, ctl);
       // transfer instructions
       op2({0xaa}, _tax);
       op2({0xa8}, _tay);
@@ -456,17 +505,17 @@ const std::array<std::function<void(CPU::Impl &)>, 0x100> CPU::Impl::DISPATCH =
       op_r({0xe0, 0xe4, 0xec}, _cpx, rmw);
       op_r({0xc0, 0xc4, 0xcc}, _cpy, rmw);
       // shift operations
-      op2({0x0a}, {a_op, _asl});
-      op1({0x06, 0x16, 0x0e, 0x1e}, {rw_op, _asl, alu});
-      op2({0x4a}, {a_op, _lsr});
-      op1({0x46, 0x56, 0x4e, 0x5e}, {rw_op, _lsr, alu});
-      op2({0x2a}, {a_op, _rol});
-      op1({0x26, 0x36, 0x2e, 0x3e}, {rw_op, _rol, alu});
-      op2({0x6a}, {a_op, _ror});
-      op1({0x66, 0x76, 0x6e, 0x7e}, {rw_op, _ror, alu});
+      op_a({0x0a}, _asl);
+      op_rw({0x06, 0x16, 0x0e, 0x1e}, _asl, alu);
+      op_a({0x4a}, _lsr);
+      op_rw({0x46, 0x56, 0x4e, 0x5e}, _lsr, alu);
+      op_a({0x2a}, _rol);
+      op_rw({0x26, 0x36, 0x2e, 0x3e}, _rol, alu);
+      op_a({0x6a}, _ror);
+      op_rw({0x66, 0x76, 0x6e, 0x7e}, _ror, alu);
       // increment and decrement operations
-      op1({0xc6, 0xd6, 0xce, 0xde}, {rw_op, _dec, alu});
-      op1({0xe6, 0xf6, 0xee, 0xfe}, {rw_op, _inc, alu});
+      op_rw({0xc6, 0xd6, 0xce, 0xde}, _dec, alu);
+      op_rw({0xe6, 0xf6, 0xee, 0xfe}, _inc, alu);
       op2({0xca}, _dex);
       op2({0x88}, _dey);
       op2({0xe8}, _inx);
@@ -491,27 +540,27 @@ const std::array<std::function<void(CPU::Impl &)>, 0x100> CPU::Impl::DISPATCH =
       op_r({0x8b}, _ane, uno);
       op_r({0x6b}, _arr, uno);
       op_r({0x4b}, _asr, uno);
-      op1({0xc7, 0xd7, 0xc3, 0xd3, 0xcf, 0xdf, 0xdb}, {rw_op, _dcp, alu});
-      op1({0xe7, 0xf7, 0xef, 0xff, 0xfb, 0xe3, 0xf3}, {rw_op, _isb, alu});
+      op_rw({0xc7, 0xd7, 0xc3, 0xd3, 0xcf, 0xdf, 0xdb}, _dcp, alu);
+      op_rw({0xe7, 0xf7, 0xef, 0xff, 0xfb, 0xe3, 0xf3}, _isb, alu);
       op_r({0xbb}, _las, uno);
       op_r({0xa7, 0xb7, 0xaf, 0xbf, 0xa3, 0xb3}, _lax, uno);
       op_r({0xab}, _lxa, uno);
-      op1({0x27, 0x37, 0x2f, 0x3f, 0x3b, 0x23, 0x33}, {rw_op, _rla, alu});
-      op1({0x67, 0x77, 0x6f, 0x7f, 0x7b, 0x63, 0x73}, {rw_op, _rra, alu});
-      op1({0x87, 0x97, 0x8f, 0x83}, {w_op, _sax, uno});
+      op_rw({0x27, 0x37, 0x2f, 0x3f, 0x3b, 0x23, 0x33}, _rla, alu);
+      op_rw({0x67, 0x77, 0x6f, 0x7f, 0x7b, 0x63, 0x73}, _rra, alu);
+      op_w({0x87, 0x97, 0x8f, 0x83}, _sax, uno);
       op_r({0xcb}, _sbx, uno);
-      op1({0x9f, 0x93}, {w_op, _sha, uno});
-      op1({0x9b}, {w_op, _shs, uno});
-      op1({0x9e}, {w_op, _shx, rmw});
-      op1({0x9c}, {w_op, _shy, ctl});
-      op1({0x07, 0x17, 0x0f, 0x1f, 0x1b, 0x03, 0x13}, {rw_op, _slo, alu});
-      op1({0x47, 0x57, 0x4f, 0x5f, 0x5b, 0x43, 0x53}, {rw_op, _sre, alu});
+      op_w({0x9f, 0x93}, _sha, uno);
+      op_w({0x9b}, _shs, uno);
+      op_w({0x9e}, _shx, rmw);
+      op_w({0x9c}, _shy, ctl);
+      op_rw({0x07, 0x17, 0x0f, 0x1f, 0x1b, 0x03, 0x13}, _slo, alu);
+      op_rw({0x47, 0x57, 0x4f, 0x5f, 0x5b, 0x43, 0x53}, _sre, alu);
       // nops
-      op2({0x1a, 0x3a, 0x5a, 0x7a, 0xda, 0xea, 0xfa}, {no_op, _nop, 0, 2});
-      op2({0x80, 0x82, 0x89, 0xc2, 0xe2}, {no_op, _nop, 1, 2});
-      op2({0x04, 0x44, 0x64}, {no_op, _nop, 1, 3});
-      op2({0x14, 0x34, 0x54, 0x74, 0xd4, 0xf4}, {no_op, _nop, 1, 4});
-      op2({0x0c}, {no_op, _nop, 2, 4});
+      op_n({0x1a, 0x3a, 0x5a, 0x7a, 0xda, 0xea, 0xfa}, 0, 2);
+      op_n({0x80, 0x82, 0x89, 0xc2, 0xe2}, 1, 2);
+      op_n({0x04, 0x44, 0x64}, 1, 3);
+      op_n({0x14, 0x34, 0x54, 0x74, 0xd4, 0xf4}, 1, 4);
+      op_n({0x0c}, 2, 4);
       op_r({0x1c, 0x3c, 0x5c, 0x7c, 0xdc, 0xfc}, _nop, ctl);
       // interrupts
       op2({0x00}, _brk);
