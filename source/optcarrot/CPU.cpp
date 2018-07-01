@@ -12,6 +12,7 @@
 
 // System headers
 #include <array>
+#include <functional>
 
 using namespace optcarrot;
 
@@ -37,15 +38,21 @@ static constexpr auto CLK_8 = 8 * RP2A03_CC;
 class CPU::Impl {
 public:
   explicit Impl() = default;
-  // # methods
+  // initialization
   void reset();
-
   // mapped memory API
   void
   addMappings(address_t begin, address_t end,
               const std::function<uint8_t(address_t addr)> &peek,
               const std::function<void(address_t addr, uint8_t data)> &poke);
-  // # inline methods
+  // other APIs
+  void boot();
+  // interrupts
+  // default core
+  void run();
+
+private:
+  // mapped memory API
   uint8_t fetch(address_t addr) { return this->fetch_.at(addr)(addr); }
   void store(address_t addr, uint8_t data) {
     return this->store_.at(addr)(addr, data);
@@ -54,16 +61,42 @@ public:
     return this->fetch(addr) +
            static_cast<uint16_t>(this->fetch(addr + 1) << 8);
   }
-
-  // other APIs
-  // interrupts
-
-  // default core
-  void run();
-
-private:
   // interrupts
   void do_isr(address_t vector);
+  address_t fetch_irq_isr_vector();
+  // instruction helpers
+  uint8_t flags_pack() {
+    // NVssDIZC
+    return static_cast<uint8_t>(
+        ((this->_p_nz | this->_p_nz >> 1) & 0x80) | // N: Negative
+        ((this->_p_nz & 0xff) != 0 ? 0 : 2) |       // Z: Zero
+        this->_p_c |                                // C: Carry
+        (this->_p_v != 0 ? 0x40 : 0) |              // V: Overflow
+        this->_p_i |                                // I: Inerrupt
+        this->_p_d |                                // D: Decimal
+        0x20);
+  }
+  // P regeister
+  // branch helper
+  // storers
+  // stack management
+  void push8(uint8_t data) {
+    this->ram.at(0x0100 + this->_sp) = data;
+    this->_sp--;
+  }
+  void push16(uint16_t data) {
+    this->push8(data >> 8);
+    this->push8(data & 0xff);
+  }
+  uint8_t pull8() {
+    this->_sp++;
+    return this->ram.at(0x0100 + this->_sp);
+  }
+  uint16_t pull16() {
+    uint16_t lo = this->pull8();
+    uint16_t hi = this->pull8() * 256;
+    return lo + hi;
+  }
   // default core
   void do_clock();
 
@@ -93,40 +126,414 @@ public:
 #endif
   bool jammed{};
   // # registers
-  UNKNOWN reg_a{};
-  UNKNOWN reg_x{};
-  UNKNOWN reg_y{};
-  UNKNOWN reg_sp{};
-  UNKNOWN reg_pc{};
+  uint8_t _a{};
+  uint8_t _x{};
+  uint8_t _y{};
+  uint8_t _sp{};
+  address_t _pc{};
   // # register
-  UNKNOWN reg_p_nz{};
-  UNKNOWN reg_p_c{};
-  UNKNOWN reg_p_v{};
-  UNKNOWN reg_p_i{};
-  UNKNOWN reg_p_d{};
-#if 0
+  UNKNOWN _p_nz{};
+  UNKNOWN _p_c{};
+  UNKNOWN _p_v{};
+  UNKNOWN _p_i{};
+  UNKNOWN _p_d{};
   //
-  UNKNOWN addr{};
-  UNKNOWN data{};
-#endif
+  address_t addr{};
+  uint8_t data{};
   uint8_t opcode{};
   bool ppu_sync{};
-  address_t _pc{};
+
+private:
+  // addressing modes
+  // immediate addressing (read only)
+  static void am_imm(CPU::Impl &cpu, bool read, bool write);
+  // zero-page addressing
+  static void am_zpg(CPU::Impl &cpu, bool read, bool write);
+  // zero-page indexed addressing
+  static void am_zpg_reg(CPU::Impl &cpu, uint8_t indexed, bool read,
+                         bool write);
+  static void am_zpg_x(CPU::Impl &cpu, bool read, bool write);
+  static void am_zpg_y(CPU::Impl &cpu, bool read, bool write);
+  // absolute addressing
+  static void am_abs(CPU::Impl &cpu, bool read, bool write);
+  // absolute indexed addressing
+  static void am_abs_reg(CPU::Impl &cpu, uint8_t indexed, bool read,
+                         bool write);
+  static void am_abs_x(CPU::Impl &cpu, bool read, bool write);
+  static void am_abs_y(CPU::Impl &cpu, bool read, bool write);
+  // indexed indirect addressing
+  static void am_ind_x(CPU::Impl &cpu, bool read, bool write);
+  // indirect indexed addressing
+  static void am_ind_y(CPU::Impl &cpu, bool read, bool write);
+  static void am_read_write(CPU::Impl &cpu, bool read, bool write);
+
+  // instructions
+  // load instructions
+  static void _lda(CPU::Impl &cpu);
+  static void _ldx(CPU::Impl &cpu);
+  static void _ldy(CPU::Impl &cpu);
+  // store instructions
+  static void _sta(CPU::Impl &cpu);
+  static void _stx(CPU::Impl &cpu);
+  static void _sty(CPU::Impl &cpu);
+  // transfer instructions
+  static void _tax(CPU::Impl &cpu);
+  static void _tay(CPU::Impl &cpu);
+  static void _txa(CPU::Impl &cpu);
+  static void _tya(CPU::Impl &cpu);
+  // flow control instructions
+  static void _jmp_a(CPU::Impl &cpu);
+  static void _jmp_i(CPU::Impl &cpu);
+  static void _jsr(CPU::Impl &cpu);
+  static void _rts(CPU::Impl &cpu);
+  static void _rti(CPU::Impl &cpu);
+  static void _bne(CPU::Impl &cpu);
+  static void _beq(CPU::Impl &cpu);
+  static void _bmi(CPU::Impl &cpu);
+  static void _bpl(CPU::Impl &cpu);
+  static void _bcs(CPU::Impl &cpu);
+  static void _bcc(CPU::Impl &cpu);
+  static void _bvs(CPU::Impl &cpu);
+  static void _bvc(CPU::Impl &cpu);
+  // math operations
+  static void _adc(CPU::Impl &cpu);
+  static void _sbc(CPU::Impl &cpu);
+  // logical operations
+  static void _and(CPU::Impl &cpu);
+  static void _ora(CPU::Impl &cpu);
+  static void _eor(CPU::Impl &cpu);
+  static void _bit(CPU::Impl &cpu);
+  static void _cmp(CPU::Impl &cpu);
+  static void _cpx(CPU::Impl &cpu);
+  static void _cpy(CPU::Impl &cpu);
+  // shift operations
+  static void _asl(CPU::Impl &cpu);
+  static void _lsr(CPU::Impl &cpu);
+  static void _rol(CPU::Impl &cpu);
+  static void _ror(CPU::Impl &cpu);
+  // increment and decrement operations
+  static void _dec(CPU::Impl &cpu);
+  static void _inc(CPU::Impl &cpu);
+  static void _dex(CPU::Impl &cpu);
+  static void _dey(CPU::Impl &cpu);
+  static void _inx(CPU::Impl &cpu);
+  static void _iny(CPU::Impl &cpu);
+  // flags instructions
+  static void _clc(CPU::Impl &cpu);
+  static void _sec(CPU::Impl &cpu);
+  static void _cld(CPU::Impl &cpu);
+  static void _sed(CPU::Impl &cpu);
+  static void _clv(CPU::Impl &cpu);
+  static void _sei(CPU::Impl &cpu);
+  static void _cli(CPU::Impl &cpu);
+  // stack operations
+  static void _pha(CPU::Impl &cpu);
+  static void _php(CPU::Impl &cpu);
+  static void _pla(CPU::Impl &cpu);
+  static void _plp(CPU::Impl &cpu);
+  static void _tsx(CPU::Impl &cpu);
+  static void _txs(CPU::Impl &cpu);
+  // undocumented instructions, rarely used
+  static void _anc(CPU::Impl &cpu);
+  static void _ane(CPU::Impl &cpu);
+  static void _arr(CPU::Impl &cpu);
+  static void _asr(CPU::Impl &cpu);
+  static void _dcp(CPU::Impl &cpu);
+  static void _isb(CPU::Impl &cpu);
+  static void _las(CPU::Impl &cpu);
+  static void _lax(CPU::Impl &cpu);
+  static void _lxa(CPU::Impl &cpu);
+  static void _rla(CPU::Impl &cpu);
+  static void _rra(CPU::Impl &cpu);
+  static void _sax(CPU::Impl &cpu);
+  static void _sbx(CPU::Impl &cpu);
+  static void _sha(CPU::Impl &cpu);
+  static void _shs(CPU::Impl &cpu);
+  static void _shx(CPU::Impl &cpu);
+  static void _shy(CPU::Impl &cpu);
+  static void _slo(CPU::Impl &cpu);
+  static void _sre(CPU::Impl &cpu);
+  // nops
+  static void _nop(CPU::Impl &cpu);
+  // interrupts
+  static void _brk(CPU::Impl &cpu);
+  static void _jam(CPU::Impl &cpu);
+
+private:
+  static const std::array<std::function<void(CPU::Impl &)>, 0x100> DISPATCH;
 };
+
+void CPU::Impl::am_imm(CPU::Impl &cpu, bool /*read*/, bool /*write*/) {
+  cpu.data = cpu.fetch(cpu._pc);
+  cpu._pc += 1;
+  cpu.clk += CLK_2;
+}
+void CPU::Impl::am_zpg(CPU::Impl &cpu, bool read, bool write) {
+  cpu.addr = cpu.fetch(cpu._pc);
+  cpu._pc += 1;
+  cpu.clk += CLK_3;
+  if (read) {
+    cpu.data = cpu.ram[cpu.addr];
+    if (write) {
+      cpu.clk += CLK_2;
+    }
+  }
+}
+void CPU::Impl::am_zpg_reg(CPU::Impl &cpu, uint8_t indexed, bool read,
+                           bool write) {
+  cpu.addr = (indexed + cpu.fetch(cpu._pc)) & 0xff;
+  cpu._pc += 1;
+  cpu.clk += CLK_4;
+  if (read) {
+    cpu.data = cpu.ram[cpu.addr];
+    if (write) {
+      cpu.clk += CLK_2;
+    }
+  }
+}
+void CPU::Impl::am_zpg_x(CPU::Impl &cpu, bool read, bool write) {
+  am_zpg_reg(cpu, cpu._x, read, write);
+}
+void CPU::Impl::am_zpg_y(CPU::Impl &cpu, bool read, bool write) {
+  am_zpg_reg(cpu, cpu._y, read, write);
+}
+void CPU::Impl::am_abs(CPU::Impl &cpu, bool read, bool write) {
+  cpu.addr = cpu.peek16(cpu._pc);
+  cpu._pc += 2;
+  cpu.clk += CLK_3;
+  am_read_write(cpu, read, write);
+}
+void CPU::Impl::am_abs_reg(CPU::Impl &cpu, uint8_t indexed, bool read,
+                           bool write) {
+  auto addr = cpu._pc + 1;
+  auto i = indexed + cpu.fetch(cpu._pc);
+  cpu.addr = ((cpu.fetch(addr) << 8) + i) & 0xffff;
+  if (write) {
+    addr = (cpu.addr - (i & 0x100)) & 0xffff;
+    cpu.fetch(addr);
+    cpu.clk += CLK_4;
+  } else {
+    cpu.clk += CLK_3;
+    if ((i & 0x100) != 0) {
+      addr = (cpu.addr - 0x100) & 0xffff; // for inlining fetch
+      cpu.fetch(addr);
+      cpu.clk += CLK_1;
+    }
+  }
+
+  am_read_write(cpu, read, write);
+  cpu._pc += 2;
+}
+void CPU::Impl::am_abs_x(CPU::Impl &cpu, bool read, bool write) {
+  am_abs_reg(cpu, cpu._x, read, write);
+}
+void CPU::Impl::am_abs_y(CPU::Impl &cpu, bool read, bool write) {
+  am_abs_reg(cpu, cpu._y, read, write);
+}
+void CPU::Impl::am_ind_x(CPU::Impl &cpu, bool read, bool write) {
+  auto addr = cpu.fetch(cpu._pc) + cpu._x;
+  cpu._pc += 1;
+  cpu.clk += CLK_5;
+  cpu.addr = cpu.ram[addr & 0xff] | cpu.ram[(addr + 1) & 0xff] << 8;
+  am_read_write(cpu, read, write);
+}
+void CPU::Impl::am_ind_y(CPU::Impl &cpu, bool read, bool write) {
+  auto addr = cpu.fetch(cpu._pc);
+  cpu._pc += 1;
+  auto indexed = cpu.ram[addr] + cpu._y;
+  cpu.clk += CLK_4;
+  if (write) {
+    cpu.clk += CLK_1;
+    cpu.addr =
+        static_cast<address_t>((cpu.ram[(addr + 1) & 0xff] << 8) + indexed);
+    addr = static_cast<address_t>(cpu.addr -
+                                  (indexed & 0x100)); // for inlining fetch
+    cpu.fetch(addr);
+  } else {
+    cpu.addr = ((cpu.ram[(addr + 1) & 0xff] << 8) + indexed) & 0xffff;
+    if ((indexed & 0x100) != 0) {
+      addr = static_cast<address_t>((cpu.addr - 0x100) &
+                                    0xffff); // for inlining fetch;
+      cpu.fetch(addr);
+      cpu.clk += CLK_1;
+    }
+  }
+
+  am_read_write(cpu, read, write);
+}
+void CPU::Impl::am_read_write(CPU::Impl &cpu, bool read, bool write) {
+  if (read) {
+    cpu.data = cpu.fetch(cpu.addr);
+    cpu.clk += CLK_1;
+    if (write) {
+      cpu.store(cpu.addr, cpu.data);
+      cpu.clk += CLK_1;
+    }
+  }
+}
+
+const std::array<std::function<void(CPU::Impl &)>, 0x100> CPU::Impl::DISPATCH =
+    ([]() {
+      enum ADDRESSING_MODE { ctl = 0, rmw = 1, alu = 2, uno = 3 };
+      std::function<void(CPU::Impl &, bool, bool)> ADDRESSING_MODES[][8] = {
+          // ctl
+          {am_imm, am_zpg, am_imm, am_abs, nullptr, am_zpg_x, nullptr,
+           am_abs_x},
+          // rmw
+          {am_imm, am_zpg, am_imm, am_abs, nullptr, am_zpg_y, nullptr,
+           am_abs_y},
+          // alu
+          {am_ind_x, am_zpg, am_imm, am_abs, am_ind_y, am_zpg_x, am_abs_y,
+           am_abs_x},
+          // uno
+          {am_ind_x, am_zpg, am_imm, am_abs, am_ind_y, am_zpg_y, am_abs_y,
+           am_abs_y},
+      };
+      std::array<std::function<void(CPU::Impl &)>, 0x100> ary{};
+      auto op1 = [&](std::vector<uint8_t> opcodes, std::vector<uint8_t> args) {
+        for (const auto &opcode_ : opcodes) {
+          auto kind = args[0];
+          auto op_ = args[1];
+          auto mode = ADDRESSING_MODES[args[2]][opcode_ >> 2 & 7];
+          // send_args = [kind, op, mode]
+          // send_args << (mode.to_s.start_with?("zpg") ? :store_zpg :
+          // :store_mem) if kind != :r_op ary[opcode_] = send_args
+        }
+      };
+      auto op2 = [&](std::vector<uint8_t> opcodes,
+                     std::function<void(CPU::Impl &)> func) {
+        for (const auto &opcode_ : opcodes) {
+          ary[opcode_] = func;
+        }
+      };
+      auto op_r = [&](std::vector<uint8_t> opcodes,
+                      std::function<void(CPU::Impl &)> op,
+                      enum ADDRESSING_MODE modenum) {
+        for (const auto &opcode_ : opcodes) {
+          auto mode = ADDRESSING_MODES[modenum][opcode_ >> 2 & 7];
+          ary[opcode_] = [op, mode](CPU::Impl &cpu) {
+            mode(cpu, true, false);
+            op(cpu);
+          };
+        }
+      };
+      // load instructions
+      op_r({0xa9, 0xa5, 0xb5, 0xad, 0xbd, 0xb9, 0xa1, 0xb1}, _lda, alu);
+      op_r({0xa2, 0xa6, 0xb6, 0xae, 0xbe}, _ldx, rmw);
+      op_r({0xa0, 0xa4, 0xb4, 0xac, 0xbc}, _ldy, ctl);
+      // store instructions
+      op1({0x85, 0x95, 0x8d, 0x9d, 0x99, 0x81, 0x91}, {w_op, _sta, alu});
+      op1({0x86, 0x96, 0x8e}, {w_op, _stx, rmw});
+      op1({0x84, 0x94, 0x8c}, {w_op, _sty, ctl});
+      // transfer instructions
+      op2({0xaa}, _tax);
+      op2({0xa8}, _tay);
+      op2({0x8a}, _txa);
+      op2({0x98}, _tya);
+      // flow control instructions
+      op2({0x4c}, _jmp_a);
+      op2({0x6c}, _jmp_i);
+      op2({0x20}, _jsr);
+      op2({0x60}, _rts);
+      op2({0x40}, _rti);
+      op2({0xd0}, _bne);
+      op2({0xf0}, _beq);
+      op2({0x30}, _bmi);
+      op2({0x10}, _bpl);
+      op2({0xb0}, _bcs);
+      op2({0x90}, _bcc);
+      op2({0x70}, _bvs);
+      op2({0x50}, _bvc);
+      // math operations
+      op_r({0x69, 0x65, 0x75, 0x6d, 0x7d, 0x79, 0x61, 0x71}, _adc, alu);
+      op_r({0xe9, 0xeb, 0xe5, 0xf5, 0xed, 0xfd, 0xf9, 0xe1, 0xf1}, _sbc, alu);
+      // logical operations
+      op_r({0x29, 0x25, 0x35, 0x2d, 0x3d, 0x39, 0x21, 0x31}, _and, alu);
+      op_r({0x09, 0x05, 0x15, 0x0d, 0x1d, 0x19, 0x01, 0x11}, _ora, alu);
+      op_r({0x49, 0x45, 0x55, 0x4d, 0x5d, 0x59, 0x41, 0x51}, _eor, alu);
+      op_r({0x24, 0x2c}, _bit, alu);
+      op_r({0xc9, 0xc5, 0xd5, 0xcd, 0xdd, 0xd9, 0xc1, 0xd1}, _cmp, alu);
+      op_r({0xe0, 0xe4, 0xec}, _cpx, rmw);
+      op_r({0xc0, 0xc4, 0xcc}, _cpy, rmw);
+      // shift operations
+      op2({0x0a}, {a_op, _asl});
+      op1({0x06, 0x16, 0x0e, 0x1e}, {rw_op, _asl, alu});
+      op2({0x4a}, {a_op, _lsr});
+      op1({0x46, 0x56, 0x4e, 0x5e}, {rw_op, _lsr, alu});
+      op2({0x2a}, {a_op, _rol});
+      op1({0x26, 0x36, 0x2e, 0x3e}, {rw_op, _rol, alu});
+      op2({0x6a}, {a_op, _ror});
+      op1({0x66, 0x76, 0x6e, 0x7e}, {rw_op, _ror, alu});
+      // increment and decrement operations
+      op1({0xc6, 0xd6, 0xce, 0xde}, {rw_op, _dec, alu});
+      op1({0xe6, 0xf6, 0xee, 0xfe}, {rw_op, _inc, alu});
+      op2({0xca}, _dex);
+      op2({0x88}, _dey);
+      op2({0xe8}, _inx);
+      op2({0xc8}, _iny);
+      // flags instructions
+      op2({0x18}, _clc);
+      op2({0x38}, _sec);
+      op2({0xd8}, _cld);
+      op2({0xf8}, _sed);
+      op2({0x58}, _cli);
+      op2({0x78}, _sei);
+      op2({0xb8}, _clv);
+      // stack operations
+      op2({0x48}, _pha);
+      op2({0x08}, _php);
+      op2({0x68}, _pla);
+      op2({0x28}, _plp);
+      op2({0xba}, _tsx);
+      op2({0x9a}, _txs);
+      // undocumented instructions, rarely used
+      op_r({0x0b, 0x2b}, _anc, uno);
+      op_r({0x8b}, _ane, uno);
+      op_r({0x6b}, _arr, uno);
+      op_r({0x4b}, _asr, uno);
+      op1({0xc7, 0xd7, 0xc3, 0xd3, 0xcf, 0xdf, 0xdb}, {rw_op, _dcp, alu});
+      op1({0xe7, 0xf7, 0xef, 0xff, 0xfb, 0xe3, 0xf3}, {rw_op, _isb, alu});
+      op_r({0xbb}, _las, uno);
+      op_r({0xa7, 0xb7, 0xaf, 0xbf, 0xa3, 0xb3}, _lax, uno);
+      op_r({0xab}, _lxa, uno);
+      op1({0x27, 0x37, 0x2f, 0x3f, 0x3b, 0x23, 0x33}, {rw_op, _rla, alu});
+      op1({0x67, 0x77, 0x6f, 0x7f, 0x7b, 0x63, 0x73}, {rw_op, _rra, alu});
+      op1({0x87, 0x97, 0x8f, 0x83}, {w_op, _sax, uno});
+      op_r({0xcb}, _sbx, uno);
+      op1({0x9f, 0x93}, {w_op, _sha, uno});
+      op1({0x9b}, {w_op, _shs, uno});
+      op1({0x9e}, {w_op, _shx, rmw});
+      op1({0x9c}, {w_op, _shy, ctl});
+      op1({0x07, 0x17, 0x0f, 0x1f, 0x1b, 0x03, 0x13}, {rw_op, _slo, alu});
+      op1({0x47, 0x57, 0x4f, 0x5f, 0x5b, 0x43, 0x53}, {rw_op, _sre, alu});
+      // nops
+      op2({0x1a, 0x3a, 0x5a, 0x7a, 0xda, 0xea, 0xfa}, {no_op, _nop, 0, 2});
+      op2({0x80, 0x82, 0x89, 0xc2, 0xe2}, {no_op, _nop, 1, 2});
+      op2({0x04, 0x44, 0x64}, {no_op, _nop, 1, 3});
+      op2({0x14, 0x34, 0x54, 0x74, 0xd4, 0xf4}, {no_op, _nop, 1, 4});
+      op2({0x0c}, {no_op, _nop, 2, 4});
+      op_r({0x1c, 0x3c, 0x5c, 0x7c, 0xdc, 0xfc}, _nop, ctl);
+      // interrupts
+      op2({0x00}, _brk);
+      op2({0x02, 0x12, 0x22, 0x32, 0x42, 0x52, 0x62, 0x72, 0x92, 0xb2, 0xd2,
+           0xf2},
+          _jam);
+      return ary;
+    })();
 
 void CPU::Impl::reset() {
   // registers
-  this->reg_a = 0;
-  this->reg_x = 0;
-  this->reg_y = 0;
-  this->reg_sp = 0xfd;
-  this->reg_pc = 0xfffc;
+  this->_a = 0;
+  this->_x = 0;
+  this->_y = 0;
+  this->_sp = 0xfd;
+  this->_pc = 0xfffc;
   // P register
-  this->reg_p_nz = 1;
-  this->reg_p_c = 0;
-  this->reg_p_v = 0;
-  this->reg_p_i = 0x04;
-  this->reg_p_d = 0;
+  this->_p_nz = 1;
+  this->_p_c = 0;
+  this->_p_v = 0;
+  this->_p_i = 0x04;
+  this->_p_d = 0;
   // clocks
   this->clk = 0;
   this->clk_total = 0;
@@ -150,7 +557,7 @@ void CPU::Impl::reset() {
                     [&](address_t, uint8_t) {});
   this->addMappings(0xfffc, 0xfffc,
                     [&](address_t) -> uint8_t {
-                      this->reg_pc = (this->reg_pc - 1) & 0xffff;
+                      this->_pc--;
                       return 0xfc;
                     },
                     [&](address_t, uint8_t) {});
@@ -166,6 +573,11 @@ void CPU::Impl::addMappings(
     this->fetch_.at(addr) = peek;
     this->store_.at(addr) = poke;
   }
+}
+
+void CPU::Impl::boot() {
+  this->clk = CLK_7;
+  this->_pc = this->peek16(RESET_VECTOR);
 }
 
 void CPU::Impl::run() { // TODO(tenmyo): CPU::Impl::run()
@@ -192,46 +604,57 @@ void CPU::Impl::run() { // TODO(tenmyo): CPU::Impl::run()
   } while (this->clk < this->clk_frame);
 }
 
-void CPU::Impl::do_isr(address_t /*vector*/) {
-  // TODO(tenmyo): CPU::Impl::do_isr()
+void CPU::Impl::do_isr(address_t vector) {
   if (this->jammed) {
     return;
   }
-  // push16(@_pc)
-  // push8(flags_pack)
-  // @_p_i = 0x04
+  this->push16(this->_pc);
+  this->push8(this->flags_pack());
+  this->_p_i = 0x04;
   this->clk += CLK_7;
-  // addr = vector == NMI_VECTOR ? NMI_VECTOR : fetch_irq_isr_vector
-  // @_pc = peek16(addr)
+  auto addr =
+      (vector == NMI_VECTOR) ? NMI_VECTOR : this->fetch_irq_isr_vector();
+  this->_pc = peek16(addr);
 }
 
-void CPU::Impl::do_clock() { // TODO(tenmyo): CPU::Impl::do_clock()
+address_t CPU::Impl::fetch_irq_isr_vector() {
+  if (this->clk >= this->clk_frame) {
+    this->fetch(0x3000);
+  }
+  if (this->clk_nmi != FOREVER_CLOCK) {
+    if (this->clk_nmi + CLK_2 <= this->clk) {
+      this->clk_nmi = FOREVER_CLOCK;
+      return NMI_VECTOR;
+    }
+    this->clk_nmi = this->clk + 1;
+  }
+  return IRQ_VECTOR;
+}
+
+void CPU::Impl::do_clock() {
   auto clock = this->apu->do_clock();
 
-  if (clock > this->clk_frame) {
-    clock = this->clk_frame;
-  }
+  clock = std::min(clock, this->clk_frame);
 
   if (this->clk < this->clk_nmi) {
-    if (clock > this->clk_nmi) {
-      clock = this->clk_nmi;
-    }
+    clock = std::min(clock, this->clk_nmi);
     if (this->clk < this->clk_irq) {
-      if (clock > this->clk_irq) {
-        clock = this->clk_irq;
-      }
+      clock = std::min(clock, this->clk_irq);
     } else {
       this->clk_irq = FOREVER_CLOCK;
-      // do_isr(IRQ_VECTOR)
+      this->do_isr(IRQ_VECTOR);
     }
   } else {
     this->clk_nmi = FOREVER_CLOCK;
     this->clk_irq = FOREVER_CLOCK;
-    // do_isr(NMI_VECTOR)
+    this->do_isr(NMI_VECTOR);
   }
   this->clk_target = clock;
 }
 
+//==============================================================================
+//= Public API
+//==============================================================================
 CPU::CPU(std::shared_ptr<Config> conf)
     : conf_(std::move(conf)), p_(std::make_unique<Impl>()) {
   this->reset();
@@ -257,11 +680,9 @@ void CPU::nextFrameClock(size_t clk) {
     this->p_->clk_target = clk;
   }
 }
+
 void CPU::setAPU(std::shared_ptr<APU> apu) { this->p_->apu = std::move(apu); }
 
-void CPU::boot() {
-  this->p_->clk = CLK_7;
-  this->p_->_pc = this->p_->peek16(RESET_VECTOR);
-}
+void CPU::boot() { this->p_->boot(); }
 
 void CPU::run() { this->p_->run(); }
