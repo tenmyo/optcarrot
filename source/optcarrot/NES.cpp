@@ -36,7 +36,7 @@ private:
 };
 
 void NES::Impl::step() {
-  this->Ppu->setupFrame();
+  this->Ppu->setup_frame();
   this->Cpu->run();
   // TODO(tenmyo): NES::Impl::step
 #if 0
@@ -65,6 +65,8 @@ NES::NES(std::shared_ptr<Config> conf)
   // @apu = @cpu.apu = APU.new(@conf, @cpu, *@audio.spec)
   this->p_->Ppu =
       std::make_unique<PPU>(conf_, this->p_->Cpu, &this->p_->Video->Palette);
+  this->p_->Cpu->setPPU(this->p_->Ppu);
+  // @ppu = @cpu.ppu = PPU.new(@conf, @cpu, @video.palette)
   this->p_->Rom = ROM::load(conf_);
   // @rom  = ROM.load(@conf, @cpu, @ppu)
   this->p_->Pads = std::make_unique<Pads>(conf_);

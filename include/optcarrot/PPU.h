@@ -20,8 +20,19 @@ public:
   PPU(PPU &&) noexcept = default;
   PPU &operator=(PPU &&) noexcept = default;
 
+  // # initialization
   void reset();
-  void setupFrame();
+
+  // # other APIs
+  // set_chr_mem
+  // nametables
+  // update
+  void setup_frame();
+  void vsync();
+  // monitor_a12_rising_edge
+
+  // # helpers
+  void sync(size_t elapsed);
 
 private:
   std::shared_ptr<CPU> cpu_;

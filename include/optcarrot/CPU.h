@@ -5,8 +5,9 @@
 #include <memory>
 
 namespace optcarrot {
-class APU;
 class Config;
+class APU;
+class PPU;
 
 /// CPU implementation
 class CPU {
@@ -49,6 +50,7 @@ public:
   void run();
 
   void setAPU(std::shared_ptr<APU> apu);
+  void setPPU(std::shared_ptr<PPU> ppu);
 
 private:
   // default core

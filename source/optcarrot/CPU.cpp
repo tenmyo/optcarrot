@@ -7,6 +7,7 @@
 // Local/Private headers
 #include "optcarrot.h"
 #include "optcarrot/APU.h"
+#include "optcarrot/PPU.h"
 
 // External headers
 
@@ -15,8 +16,6 @@
 #include <functional>
 
 using namespace optcarrot;
-
-using UNKNOWN = unsigned;
 
 static constexpr address_t NMI_VECTOR = 0xfffa;
 static constexpr address_t RESET_VECTOR = 0xfffc;
@@ -121,6 +120,7 @@ private:
 
 public:
   std::shared_ptr<APU> apu{};
+  std::shared_ptr<PPU> ppu{};
   // main memory
   std::array<std::function<uint8_t(address_t addr)>, 0x10000> fetch_{};
   std::array<std::function<void(address_t addr, uint8_t data)>, 0x10000>
@@ -965,7 +965,7 @@ void CPU::Impl::boot() {
   this->_pc = this->peek16(RESET_VECTOR);
 }
 
-void CPU::Impl::run() { // TODO(tenmyo): CPU::Impl::run()
+void CPU::Impl::run() {
   this->do_clock();
   do {
     do {
@@ -1069,6 +1069,8 @@ void CPU::nextFrameClock(size_t clk) {
 }
 
 void CPU::setAPU(std::shared_ptr<APU> apu) { this->p_->apu = std::move(apu); }
+
+void CPU::setPPU(std::shared_ptr<PPU> ppu) { this->p_->ppu = std::move(ppu); }
 
 void CPU::boot() { this->p_->boot(); }
 
