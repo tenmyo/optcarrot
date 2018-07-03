@@ -38,9 +38,9 @@ private:
 void NES::Impl::step() {
   this->Ppu->setup_frame();
   this->Cpu->run();
+  this->Ppu->vsync();
   // TODO(tenmyo): NES::Impl::step
 #if 0
-  @ppu.vsync
   @apu.vsync
   @cpu.vsync
   @rom.vsync

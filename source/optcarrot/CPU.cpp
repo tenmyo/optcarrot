@@ -21,19 +21,6 @@ static constexpr address_t NMI_VECTOR = 0xfffa;
 static constexpr address_t RESET_VECTOR = 0xfffc;
 static constexpr address_t IRQ_VECTOR = 0xfffe;
 
-static constexpr auto IRQ_EXT = 0x01;
-static constexpr auto IRQ_FRAME = 0x40;
-static constexpr auto IRQ_DMC = 0x80;
-
-static constexpr auto CLK_1 = 1 * RP2A03_CC;
-static constexpr auto CLK_2 = 2 * RP2A03_CC;
-static constexpr auto CLK_3 = 3 * RP2A03_CC;
-static constexpr auto CLK_4 = 4 * RP2A03_CC;
-static constexpr auto CLK_5 = 5 * RP2A03_CC;
-static constexpr auto CLK_6 = 6 * RP2A03_CC;
-static constexpr auto CLK_7 = 7 * RP2A03_CC;
-static constexpr auto CLK_8 = 8 * RP2A03_CC;
-
 class CPU::Impl {
 public:
   explicit Impl() = default;
@@ -42,17 +29,19 @@ public:
   // mapped memory API
   void
   add_mappings(address_t begin, address_t end,
-              const std::function<uint8_t(address_t addr)> &peek,
-              const std::function<void(address_t addr, uint8_t data)> &poke);
+               const std::function<uint8_t(address_t addr)> &peek,
+               const std::function<void(address_t addr, uint8_t data)> &poke);
+  uint8_t fetch(address_t addr_) { return this->fetch_.at(addr_)(addr_); }
   // other APIs
+  void sprite_dma(address_t addr_, std::array<uint8_t, 0x100> *sp_ram);
   void boot();
   // interrupts
+  void do_nmi(size_t clk_);
   // default core
   void run();
 
 private:
   // mapped memory API
-  uint8_t fetch(address_t addr_) { return this->fetch_.at(addr_)(addr_); }
   void store(address_t addr_, uint8_t data_) {
     return this->store_.at(addr_)(addr_, data_);
   }
@@ -61,6 +50,7 @@ private:
            static_cast<uint16_t>(this->fetch(addr_ + 1) << 8);
   }
   // interrupts
+  size_t next_interrupt_clock(size_t clk_);
   void do_isr(address_t vector);
   address_t fetch_irq_isr_vector();
   // instruction helpers
@@ -938,16 +928,16 @@ void CPU::Impl::reset() {
         this->ram.at(addr_ % 0x0800) = data_;
       });
   this->add_mappings(0x2000, 0xffff,
-                    [&](address_t addr_) -> uint8_t { return addr_ >> 8; },
-                    [&](address_t, uint8_t) {});
+                     [&](address_t addr_) -> uint8_t { return addr_ >> 8; },
+                     [&](address_t, uint8_t) {});
   this->add_mappings(0xfffc, 0xfffc,
-                    [&](address_t) -> uint8_t {
-                      this->_pc--;
-                      return 0xfc;
-                    },
-                    [&](address_t, uint8_t) {});
+                     [&](address_t) -> uint8_t {
+                       this->_pc--;
+                       return 0xfc;
+                     },
+                     [&](address_t, uint8_t) {});
   this->add_mappings(0xfffd, 0xfffd, [&](address_t) -> uint8_t { return 0xff; },
-                    [&](address_t, uint8_t) {});
+                     [&](address_t, uint8_t) {});
 }
 
 void CPU::Impl::add_mappings(
@@ -960,9 +950,25 @@ void CPU::Impl::add_mappings(
   }
 }
 
+void CPU::Impl::sprite_dma(address_t addr_,
+                           std::array<uint8_t, 0x100> *sp_ram) {
+  for (size_t i = 0; i < 256; ++i) {
+    sp_ram->at(i) = this->ram.at(addr_ + i);
+  }
+  for (size_t i = 0; i < 64; ++i) {
+    sp_ram->at(i * 4 + 2) = 0xe3;
+  }
+}
+
 void CPU::Impl::boot() {
   this->clk = CLK_7;
   this->_pc = this->peek16(RESET_VECTOR);
+}
+
+void CPU::Impl::do_nmi(size_t clk_) {
+  if (this->clk_nmi == FOREVER_CLOCK) {
+    this->clk_nmi = this->next_interrupt_clock(clk_);
+  }
 }
 
 void CPU::Impl::run() {
@@ -989,6 +995,14 @@ void CPU::Impl::run() {
     } while (this->clk < this->clk_target);
     this->do_clock();
   } while (this->clk < this->clk_frame);
+}
+
+size_t CPU::Impl::next_interrupt_clock(size_t clk_) {
+  clk_ += CLK_1 + CLK_1 / 2; // interrupt edge
+  if (this->clk_target > clk_) {
+    this->clk_target = clk_;
+  }
+  return clk_;
 }
 
 void CPU::Impl::do_isr(address_t vector) {
@@ -1046,32 +1060,28 @@ CPU::CPU(std::shared_ptr<Config> conf)
     : conf_(std::move(conf)), p_(std::make_unique<Impl>()) {
   this->reset();
 }
-
 CPU::~CPU() = default;
-
 void CPU::reset() { this->p_->reset(); }
-
 void CPU::add_mappings(
     address_t begin, address_t end,
     const std::function<uint8_t(address_t addr)> &peek,
     const std::function<void(address_t addr, uint8_t data)> &poke) {
   this->p_->add_mappings(begin, end, peek, poke);
 }
-
+uint8_t CPU::fetch(address_t addr) { return this->p_->fetch(addr); }
 size_t CPU::current_clock() { return this->p_->clk; }
-
-size_t CPU::nextFrameClock() { return this->p_->clk_frame; }
-void CPU::nextFrameClock(size_t clk) {
+size_t CPU::next_frame_clock() { return this->p_->clk_frame; }
+void CPU::next_frame_clock(size_t clk) {
   this->p_->clk_frame = clk;
   if (clk < this->p_->clk_target) {
     this->p_->clk_target = clk;
   }
 }
-
 void CPU::setAPU(std::shared_ptr<APU> apu) { this->p_->apu = std::move(apu); }
-
 void CPU::setPPU(std::shared_ptr<PPU> ppu) { this->p_->ppu = std::move(ppu); }
-
+void CPU::sprite_dma(address_t addr, std::array<uint8_t, 0x100> *sp_ram) {
+  this->p_->sprite_dma(addr, sp_ram);
+}
 void CPU::boot() { this->p_->boot(); }
-
+void CPU::do_nmi(size_t clk) { this->p_->do_nmi(clk); }
 void CPU::run() { this->p_->run(); }

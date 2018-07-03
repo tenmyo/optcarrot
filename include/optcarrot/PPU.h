@@ -26,7 +26,7 @@ public:
   // # other APIs
   // set_chr_mem
   // nametables
-  // update
+  void update(size_t data_setup);
   void setup_frame();
   void vsync();
   // monitor_a12_rising_edge
@@ -35,7 +35,6 @@ public:
   void sync(size_t elapsed);
 
 private:
-  std::shared_ptr<CPU> cpu_;
   class Impl;
   std::unique_ptr<Impl> p_;
 };
