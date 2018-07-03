@@ -25,7 +25,7 @@ public:
 
   // mapped memory API
   void
-  addMappings(address_t begin, address_t end,
+  add_mappings(address_t begin, address_t end,
               const std::function<uint8_t(address_t addr)> &peek,
               const std::function<void(address_t addr, uint8_t data)> &poke);
 

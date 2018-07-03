@@ -161,12 +161,12 @@ ROM::ROM(std::shared_ptr<Config> conf, std::string basename,
 ROM::~ROM() = default;
 
 void ROM::reset(const std::shared_ptr<CPU> &cpu) {
-  cpu->addMappings(0x8000, 0x4000,
+  cpu->add_mappings(0x8000, 0x4000,
                    [&](address_t addr) -> uint8_t {
                      return this->p_->PrgBanks.cbegin()->at(addr - 0x8000);
                    },
                    [&](address_t, uint8_t) {});
-  cpu->addMappings(0xc000, 0x4000,
+  cpu->add_mappings(0xc000, 0x4000,
                    [&](address_t addr) -> uint8_t {
                      return (this->p_->PrgBanks.cend() - 1)->at(addr - 0xc000);
                    },

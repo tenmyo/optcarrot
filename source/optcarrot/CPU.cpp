@@ -41,7 +41,7 @@ public:
   void reset();
   // mapped memory API
   void
-  addMappings(address_t begin, address_t end,
+  add_mappings(address_t begin, address_t end,
               const std::function<uint8_t(address_t addr)> &peek,
               const std::function<void(address_t addr, uint8_t data)> &poke);
   // other APIs
@@ -926,31 +926,31 @@ void CPU::Impl::reset() {
   this->ram.fill(0xff);
   // memory mappings by self
   // 2KB internal RAM
-  this->addMappings(
+  this->add_mappings(
       0x0000, 0x07ff,
       [&](address_t addr_) -> uint8_t { return this->ram.at(addr_); },
       [&](address_t addr_, uint8_t data_) { this->ram.at(addr_) = data_; });
   // Mirrors of $0000-$07FF
-  this->addMappings(
+  this->add_mappings(
       0x0800, 0x1fff,
       [&](address_t addr_) -> uint8_t { return this->ram.at(addr_ % 0x0800); },
       [&](address_t addr_, uint8_t data_) {
         this->ram.at(addr_ % 0x0800) = data_;
       });
-  this->addMappings(0x2000, 0xffff,
+  this->add_mappings(0x2000, 0xffff,
                     [&](address_t addr_) -> uint8_t { return addr_ >> 8; },
                     [&](address_t, uint8_t) {});
-  this->addMappings(0xfffc, 0xfffc,
+  this->add_mappings(0xfffc, 0xfffc,
                     [&](address_t) -> uint8_t {
                       this->_pc--;
                       return 0xfc;
                     },
                     [&](address_t, uint8_t) {});
-  this->addMappings(0xfffd, 0xfffd, [&](address_t) -> uint8_t { return 0xff; },
+  this->add_mappings(0xfffd, 0xfffd, [&](address_t) -> uint8_t { return 0xff; },
                     [&](address_t, uint8_t) {});
 }
 
-void CPU::Impl::addMappings(
+void CPU::Impl::add_mappings(
     address_t begin, address_t end,
     const std::function<uint8_t(address_t addr)> &peek,
     const std::function<void(address_t addr, uint8_t data)> &poke) {
@@ -1051,11 +1051,11 @@ CPU::~CPU() = default;
 
 void CPU::reset() { this->p_->reset(); }
 
-void CPU::addMappings(
+void CPU::add_mappings(
     address_t begin, address_t end,
     const std::function<uint8_t(address_t addr)> &peek,
     const std::function<void(address_t addr, uint8_t data)> &poke) {
-  this->p_->addMappings(begin, end, peek, poke);
+  this->p_->add_mappings(begin, end, peek, poke);
 }
 
 size_t CPU::current_clock() { return this->p_->clk; }
