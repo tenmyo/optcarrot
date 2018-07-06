@@ -11,6 +11,7 @@ constexpr auto RP2A03_CC = 12;
 using address_t = uint16_t;
 
 constexpr bool bit(size_t n, size_t i) { return ((n >> i) & 1) == 1; }
+constexpr uint8_t biti(size_t n, size_t i) { return (n >> i) & 1; }
 
 } // namespace optcarrot
 

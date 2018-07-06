@@ -15,6 +15,9 @@
 #include <array>
 #include <functional>
 
+#include <iomanip>
+#include <iostream>
+
 using namespace optcarrot;
 
 static constexpr address_t NMI_VECTOR = 0xfffa;
@@ -33,8 +36,13 @@ public:
                const std::function<void(address_t addr, uint8_t data)> &poke);
   uint8_t fetch(address_t addr_) { return this->fetch_.at(addr_)(addr_); }
   // other APIs
+  void steal_clocks(size_t clk_);
+  bool odd_clock();
+  size_t update();
+  // dmc_dma
   void sprite_dma(address_t addr_, std::array<uint8_t, 0x100> *sp_ram);
   void boot();
+  // vsync
   // interrupts
   void do_nmi(size_t clk_);
   // default core
@@ -960,6 +968,17 @@ void CPU::Impl::sprite_dma(address_t addr_,
   }
 }
 
+void CPU::Impl::steal_clocks(size_t clk_) { this->clk += clk_; }
+
+bool CPU::Impl::odd_clock() {
+  return ((this->clk_total + this->clk) % CLK_2) != 0;
+}
+
+size_t CPU::Impl::update() {
+  this->apu->clock_dma(this->clk);
+  return this->clk;
+}
+
 void CPU::Impl::boot() {
   this->clk = CLK_7;
   this->_pc = this->peek16(RESET_VECTOR);
@@ -976,6 +995,17 @@ void CPU::Impl::run() {
   do {
     do {
       this->opcode = this->fetch(this->_pc);
+
+      std::cout << std::setfill('0') << std::setw(4) << std::hex << this->_pc
+                << "  " << std::setw(2) << +this->opcode << " "
+                << "                                       "
+                << "A:" << +this->_a << " "
+                << "X:" << +this->_x << " "
+                << "Y:" << +this->_y << " "
+                << "P:" << +this->flags_pack() << " "
+                << "SP:" << +this->_sp << " "
+                << "CYC:" << std::setw(3) << std::dec << std::right
+                << this->clk / 4 % 341 << " " << std::endl;
 
       // if @conf.loglevel >= 3
       //   @conf.debug("PC:%04X A:%02X X:%02X Y:%02X P:%02X SP:%02X CYC:%3d :
@@ -1077,11 +1107,14 @@ void CPU::next_frame_clock(size_t clk) {
     this->p_->clk_target = clk;
   }
 }
-void CPU::setAPU(std::shared_ptr<APU> apu) { this->p_->apu = std::move(apu); }
-void CPU::setPPU(std::shared_ptr<PPU> ppu) { this->p_->ppu = std::move(ppu); }
+void CPU::steal_clocks(size_t clk) { this->p_->steal_clocks(clk); }
+bool CPU::odd_clock() { return this->p_->odd_clock(); }
+size_t CPU::update() { return this->p_->update(); }
 void CPU::sprite_dma(address_t addr, std::array<uint8_t, 0x100> *sp_ram) {
   this->p_->sprite_dma(addr, sp_ram);
 }
 void CPU::boot() { this->p_->boot(); }
 void CPU::do_nmi(size_t clk) { this->p_->do_nmi(clk); }
 void CPU::run() { this->p_->run(); }
+void CPU::setAPU(std::shared_ptr<APU> apu) { this->p_->apu = std::move(apu); }
+void CPU::setPPU(std::shared_ptr<PPU> ppu) { this->p_->ppu = std::move(ppu); }

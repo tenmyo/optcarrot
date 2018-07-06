@@ -223,14 +223,19 @@ private:
   std::unordered_map<
       std::array<uint8_t, 0x400> *,
       std::array<
-          std::tuple<
-              std::vector<std::tuple<size_t, address_t>>,
-              std::vector<std::tuple<
-                  size_t, const std::array<std::array<uint8_t, 8>, 0x10000> *,
-                  size_t>>>,
+          std::tuple<std::vector<std::tuple<size_t, address_t>>,
+                     std::vector<std::shared_ptr<std::tuple<
+                         address_t,
+                         const std::array<std::array<uint8_t, 8>, 0x10000> *,
+                         uint8_t>>>>,
           0x400>>
       lut_update_;
   std::array<uint16_t, 0x10000> name_lut_{};
+  std::array<std::shared_ptr<std::tuple<
+                 address_t, const std::array<std::array<uint8_t, 8>, 0x10000> *,
+                 uint8_t>>,
+             0x8000>
+      attr_lut_{};
 };
 
 PPU::Impl::Impl(std::shared_ptr<CPU> cpu, std::vector<uint32_t> *palette,
@@ -251,7 +256,7 @@ PPU::Impl::Impl(std::shared_ptr<CPU> cpu, std::vector<uint32_t> *palette,
   this->th = std::thread(&PPU::Impl::main_loop, this);
 }
 
-void PPU::Impl::reset(bool mapping) { // TODO(tenmyo): PPU::Impl::reset()
+void PPU::Impl::reset(bool mapping) {
   if (mapping) {
     // setup mapped memory
     auto peek_2xxx = [this](address_t /*addr*/) -> uint8_t {
@@ -265,8 +270,8 @@ void PPU::Impl::reset(bool mapping) { // TODO(tenmyo): PPU::Impl::reset()
       this->update(RP2C02_CC);
       auto need_nmi_old = this->need_nmi_;
 
-      this->scroll_latch_ = (this->scroll_latch_ & 0x73ffu) | (data & 0x03u)
-                                                                  << 10;
+      this->scroll_latch_ = static_cast<address_t>(
+          (this->scroll_latch_ & 0x73ff) | ((data & 0x03) << 10));
       this->vram_addr_inc_ = bit(data, 2) ? 32 : 1;
       this->sp_base_ = bit(data, 3) ? 0x1000 : 0x0000;
       this->bg_pattern_base_ = bit(data, 4) ? 0x1000 : 0x0000;
@@ -277,7 +282,7 @@ void PPU::Impl::reset(bool mapping) { // TODO(tenmyo): PPU::Impl::reset()
       this->pattern_end_ =
           this->sp_base_ != 0 || this->sp_height_ == 16 ? 0x1ff0 : 0x0ff0;
       this->bg_pattern_base_15_ =
-          static_cast<int>(bit(this->bg_pattern_base_, 12)) << 15;
+          static_cast<uint16_t>(biti(this->bg_pattern_base_, 12) << 15);
 
       if (this->need_nmi_ && this->vblank_ && !need_nmi_old) {
         auto clock = this->cpu_->current_clock() + RP2C02_CC;
@@ -328,7 +333,7 @@ void PPU::Impl::reset(bool mapping) { // TODO(tenmyo): PPU::Impl::reset()
     // PPUSTATUS
     auto peek_2002 = [this](address_t /*addr*/) -> uint8_t {
       this->update(RP2C02_CC);
-      auto v = this->io_latch_ & 0x1f;
+      uint8_t v = this->io_latch_ & 0x1f;
       if (this->vblank_) {
         v |= 0x80;
       }
@@ -354,7 +359,7 @@ void PPU::Impl::reset(bool mapping) { // TODO(tenmyo): PPU::Impl::reset()
           this->cpu_->current_clock() -
                   (this->cpu_->next_frame_clock() - (341 * 241) * RP2C02_CC) >=
               (341 * 240) * RP2C02_CC) {
-        this->io_latch_ = this->sp_ram_[this->regs_oam_];
+        this->io_latch_ = this->sp_ram_.at(this->regs_oam_);
       } else {
         this->update(RP2C02_CC);
         this->io_latch_ = this->sp_latch_;
@@ -364,7 +369,7 @@ void PPU::Impl::reset(bool mapping) { // TODO(tenmyo): PPU::Impl::reset()
     // OAMDATA (write)
     auto poke_2004 = [this](address_t /*addr*/, uint8_t data) {
       this->update(RP2C02_CC);
-      this->io_latch_ = this->sp_ram_[this->regs_oam_] =
+      this->io_latch_ = this->sp_ram_.at(this->regs_oam_) =
           this->io_latch_mask(data);
       this->regs_oam_ = (this->regs_oam_ + 1) & 0xff;
     };
@@ -391,8 +396,8 @@ void PPU::Impl::reset(bool mapping) { // TODO(tenmyo): PPU::Impl::reset()
       this->io_latch_ = data;
       this->scroll_toggle_ = !this->scroll_toggle_;
       if (this->scroll_toggle_) {
-        this->scroll_latch_ =
-            (this->scroll_latch_ & 0x00ff) | ((data & 0x3f) << 8);
+        this->scroll_latch_ = static_cast<address_t>(
+            (this->scroll_latch_ & 0x00ff) | ((data & 0x3f) << 8));
       } else {
         this->scroll_latch_ = (this->scroll_latch_ & 0x7f00) | data;
         this->scroll_addr_0_4_ = this->scroll_latch_ & 0x001f;
@@ -403,13 +408,14 @@ void PPU::Impl::reset(bool mapping) { // TODO(tenmyo): PPU::Impl::reset()
     // PPUDATA (read)
     auto peek_2007 = [this](address_t /*addr*/) -> uint8_t {
       this->update(RP2C02_CC);
-      auto addr = (this->scroll_addr_0_4_ | this->scroll_addr_5_14_) & 0x3fff;
+      auto addr = (this->scroll_addr_0_4_ | this->scroll_addr_5_14_) & 0x3fffu;
       this->update_vram_addr();
-      this->io_latch_ = (addr & 0x3f00) != 0x3f00
-                            ? this->io_buffer_
-                            : this->palette_ram_[addr & 0x1f] & this->coloring_;
+      this->io_latch_ =
+          (addr & 0x3f00) != 0x3f00
+              ? this->io_buffer_
+              : this->palette_ram_.at(addr & 0x1f) & this->coloring_;
       this->io_buffer_ =
-          addr >= 0x2000 ? this->nmt_ref_[addr >> 10 & 0x3]->at(addr & 0x3ff)
+          addr >= 0x2000 ? this->nmt_ref_.at(addr >> 10 & 0x3)->at(addr & 0x3ff)
                          : this->chr_mem_->at(addr);
       return this->io_latch_;
     };
@@ -441,11 +447,12 @@ void PPU::Impl::reset(bool mapping) { // TODO(tenmyo): PPU::Impl::reset()
             auto &lut_update = this->lut_update_.at(nmt_bank).at(nmt_idx);
             // name
             for (auto &ib : std::get<0>(lut_update)) {
-              this->name_lut_.at(std::get<0>(ib)) = data << 4 | std::get<1>(ib);
+              this->name_lut_.at(std::get<0>(ib)) =
+                  static_cast<uint16_t>((data << 4) | std::get<1>(ib));
             }
             // attr
             for (auto &a : std::get<1>(lut_update)) {
-              std::get<1>(a) = &TILE_LUT.at(data >> std::get<2>(a) & 3);
+              std::get<1>(*a) = &TILE_LUT.at(data >> std::get<2>(*a) & 3);
             }
           }
         } else if (this->chr_mem_writable_) {
@@ -594,14 +601,16 @@ void PPU::Impl::reset(bool mapping) { // TODO(tenmyo): PPU::Impl::reset()
   this->sp_zero_in_line_ = false;
 }
 
-void PPU::Impl::setup_lut() { // TODO(tenmyo): PPU::Impl::setup_lut()
+void PPU::Impl::setup_lut() {
   this->lut_update_.clear();
   for (size_t i = 0; i <= 0xffff; ++i) {
     auto nmt_bank = this->nmt_ref_.at(i >> 10 & 3);
     auto nmt_idx = i & 0x03ff;
-    auto fixed = (i >> 12 & 7) | (static_cast<int>(bit(i, 15)) << 12);
+    uint16_t fixed =
+        ((i >> 12) & 7u) | static_cast<uint16_t>(biti(i, 15) << 12);
     std::get<0>(this->lut_update_[nmt_bank].at(nmt_idx)).emplace_back(i, fixed);
-    this->name_lut_.at(i) = ((nmt_bank->at(nmt_idx) << 4) | fixed);
+    this->name_lut_.at(i) =
+        (static_cast<uint16_t>(nmt_bank->at(nmt_idx) << 4) | fixed);
   }
 
   using entries_key_t = std::tuple<address_t, uint8_t>;
@@ -609,42 +618,32 @@ void PPU::Impl::setup_lut() { // TODO(tenmyo): PPU::Impl::setup_lut()
       std::tuple<address_t, const std::array<std::array<uint8_t, 8>, 0x10000> *,
                  uint8_t>;
   auto hash = [](entries_key_t const &k) -> size_t {
-    return (std::get<0>(k) << 8) | std::get<1>(k);
+    return static_cast<size_t>((std::get<0>(k) << 8) | std::get<1>(k));
   };
   auto equal_to = [](entries_key_t const &lhs,
                      entries_key_t const &rhs) -> size_t {
     return static_cast<size_t>(((std::get<0>(lhs) << 8) | std::get<1>(lhs)) ==
                                ((std::get<0>(rhs) << 8) | std::get<1>(rhs)));
   };
-  std::unordered_map<entries_key_t, entries_value_t, decltype(hash),
-                     decltype(equal_to)>
+  std::unordered_map<entries_key_t, std::shared_ptr<entries_value_t>,
+                     decltype(hash), decltype(equal_to)>
       entries(0, hash, equal_to);
   for (size_t i = 0; i <= 0x7fff; ++i) {
     address_t io_addr =
         0x23c0 | (i & 0x0c00) | (i >> 4 & 0x0038) | (i >> 2 & 0x0007);
-    const auto &nmt_bank = *this->nmt_ref_.at(io_addr >> 10 & 3);
-    auto nmt_idx = io_addr & 0x03ff;
+    const auto nmt_bank = this->nmt_ref_.at(io_addr >> 10 & 3);
+    auto nmt_idx = io_addr & 0x03ffu;
     uint8_t attr_shift = (i & 2) | (i >> 4 & 4);
     entries_key_t key(io_addr, attr_shift);
     if (entries.count(key) == 0) {
-      entries_value_t val(
-          io_addr, &TILE_LUT[nmt_bank[nmt_idx] >> attr_shift & 3], attr_shift);
-      entries.insert(std::make_pair(key, val));
+      entries[key] = std::make_shared<entries_value_t>(
+          io_addr, &TILE_LUT.at(nmt_bank->at(nmt_idx) >> attr_shift & 3),
+          attr_shift);
     }
+    std::get<1>(this->lut_update_[nmt_bank].at(nmt_idx))
+        .emplace_back(entries[key]);
+    this->attr_lut_.at(i) = entries[key];
   }
-  // entries = {}
-  // #@attr_lut = (0..0x7fff).map do |i|
-  // #  io_addr = 0x23c0 | (i & 0x0c00) | (i >> 4 & 0x0038) | (i >> 2 & 0x0007)
-  // #  nmt_bank = @nmt_ref[io_addr >> 10 & 3]
-  // #  nmt_idx = io_addr & 0x03ff
-  // #  attr_shift = (i & 2) | (i >> 4 & 4)
-  // #  key = [io_addr, attr_shift]
-  //   entries[key] ||= [io_addr, TILE_LUT[nmt_bank[nmt_idx] >> attr_shift & 3],
-  //   attr_shift]
-  //   (((@lut_update[nmt_bank] ||= [])[nmt_idx] ||= [nil, nil])[1] ||= []) <<
-  //   entries[key] entries[key]
-  // end.freeze
-  // entries.each_value {|a| a.uniq! {|entry| entry.object_id } }
 }
 
 void PPU::Impl::update(size_t data_setup) {
@@ -697,7 +696,8 @@ void PPU::Impl::update_output_color() {
 }
 
 void PPU::Impl::update_vram_addr() {
-  // TODO(tenmyo): PPU::Impl::update_scroll_address_line()update_vram_addr
+  // TODO(tenmyo): PPU::Impl::update_vram_addr()
+  std::cerr << __PRETTY_FUNCTION__ << std::endl;
 }
 #if 0
 def update_vram_addr
@@ -784,6 +784,7 @@ void PPU::Impl::run() {
              (this->thread_state == TS_WAITING_CLOCK);
     });
     this->thread_state = TS_READY;
+    this->cv.notify_one();
     this->cv.wait(lk, [&] {
       return (this->thread_state == TS_WAITING_FRAME) ||
              (this->thread_state == TS_WAITING_CLOCK);
@@ -797,6 +798,7 @@ void PPU::Impl::run() {
 void PPU::Impl::wait_frame() {
   std::unique_lock<std::mutex> lk(this->mtx);
   this->thread_state = TS_WAITING_FRAME;
+  this->cv.notify_one();
   this->cv.wait(lk, [&] { return this->thread_state == TS_READY; });
   this->thread_state = TS_RUNNING;
 }
@@ -806,6 +808,7 @@ void PPU::Impl::wait_zero_clocks() {
     return;
   }
   this->thread_state = TS_WAITING_CLOCK;
+  this->cv.notify_one();
   this->cv.wait(lk, [&] { return this->thread_state == TS_READY; });
   this->thread_state = TS_RUNNING;
 }
@@ -819,15 +822,11 @@ void PPU::Impl::wait_two_clocks() {
 }
 
 void PPU::Impl::main_loop() { // TODO(tenmyo): PPU::Impl::main_loop()
-  std::cout << "main_loop" << std::endl;
   this->wait_frame();
   this->boot();
-  std::cout << "booted" << std::endl;
   this->wait_frame();
   for (;;) {
-    std::cout << "hclk1: " << this->hclk_ << std::endl;
     this->wait_one_clock();
-    std::cout << "hclk2: " << this->hclk_ << std::endl;
     this->wait_frame();
   }
 }
