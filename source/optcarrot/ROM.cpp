@@ -20,6 +20,8 @@
 #include <stdexcept>
 #include <string>
 
+#include <iomanip>
+
 using namespace optcarrot;
 
 class InvalidROM : std::runtime_error {
@@ -196,6 +198,7 @@ void ROM::save_battery() {
 }
 
 std::unique_ptr<ROM> ROM::load(std::shared_ptr<Config> conf) {
-  std::filesystem::path p("_ruby/examples/Lan_Master.nes");
+  // std::filesystem::path p("_ruby/examples/Lan_Master.nes");
+  std::filesystem::path p(",testdata/nestest.nes");
   return std::make_unique<ROM>(std::move(conf), p.filename(), file_read(p));
 }
