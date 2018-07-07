@@ -39,7 +39,7 @@ public:
   // dmc_dma
   void sprite_dma(address_t addr_, std::array<uint8_t, 0x100> *sp_ram);
   void boot();
-  // vsync
+  void vsync();
   // interrupts
   void do_nmi(size_t clk_);
   // default core
@@ -986,6 +986,22 @@ void CPU::Impl::boot() {
   }
 }
 
+void CPU::Impl::vsync() {
+  if (this->ppu_sync) {
+    this->ppu->sync(this->clk);
+  }
+
+  this->clk -= this->clk_frame;
+  this->clk_total += this->clk_frame;
+
+  if (this->clk_nmi != FOREVER_CLOCK) {
+    this->clk_nmi -= this->clk_frame;
+  }
+  if (this->clk_irq != FOREVER_CLOCK) {
+    this->clk_irq -= std::min(this->clk_irq, this->clk_frame);
+  }
+}
+
 void CPU::Impl::do_nmi(size_t clk_) {
   if (this->clk_nmi == FOREVER_CLOCK) {
     this->clk_nmi = this->next_interrupt_clock(clk_);
@@ -1116,6 +1132,7 @@ void CPU::sprite_dma(address_t addr, std::array<uint8_t, 0x100> *sp_ram) {
   this->p_->sprite_dma(addr, sp_ram);
 }
 void CPU::boot() { this->p_->boot(); }
+void CPU::vsync() { this->p_->vsync(); }
 void CPU::do_nmi(size_t clk) { this->p_->do_nmi(clk); }
 void CPU::run() { this->p_->run(); }
 void CPU::setAPU(std::shared_ptr<APU> apu) { this->p_->apu = std::move(apu); }

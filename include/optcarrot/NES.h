@@ -11,7 +11,7 @@ public:
   static constexpr auto kFPS = 60;
 
   explicit NES(std::shared_ptr<Config> conf);
-  ~NES() noexcept;
+  ~NES();
   // disallow copy
   NES(const NES &) = delete;
   NES &operator=(const NES &) = delete;

@@ -54,7 +54,7 @@ public:
   // dmc_dma
   void sprite_dma(address_t addr, std::array<uint8_t, 0x100> *sp_ram);
   void boot();
-  // vsync
+  void vsync();
 
   // interrupts
   // clear_irq

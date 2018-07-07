@@ -23,6 +23,13 @@ class NES::Impl {
 public:
   explicit Impl(std::shared_ptr<Config> conf);
   ~Impl();
+  // disallow copy
+  Impl(const NES &) = delete;
+  Impl &operator=(const NES &) = delete;
+  // allow move
+  Impl(Impl &&) noexcept = default;
+  Impl &operator=(Impl &&) noexcept = default;
+
   void reset();
   void run();
 
@@ -90,14 +97,13 @@ void NES::Impl::run() {
   }
 }
 
-void NES::Impl::step() {
+void NES::Impl::step() { // TODO(tenmyo): NES::Impl::step
   this->Ppu->setup_frame();
   this->Cpu->run();
   this->Ppu->vsync();
-  // TODO(tenmyo): NES::Impl::step
+  // @apu.vsync
+  this->Cpu->vsync();
 #if 0
-  @apu.vsync
-  @cpu.vsync
   @rom.vsync
 
   @input.tick(@frame, @pads)
