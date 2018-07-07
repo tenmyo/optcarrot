@@ -36,6 +36,7 @@ private:
   std::shared_ptr<Pads> pads_;
   size_t Frame;
   size_t FrameTarget;
+  size_t fps_{};
 
   void step();
 
@@ -60,19 +61,10 @@ NES::Impl::Impl(std::shared_ptr<Config> conf)
   // @fps_history = [] if @conf.print_fps_history
 }
 
-NES::Impl::~Impl() = default;
-#if 0
-  if @fps
-    @conf.info("fps: %.2f (in the last 10 frames)" % @fps)
-    if @conf.print_fps_history
-      puts "frame,fps-history"
-      @fps_history.each_with_index {|fps, frame| puts "#{ frame },#{ fps }" }
-    end
-    puts "fps: #{ @fps }" if @conf.print_fps
-  end
-  puts "checksum: #{ @ppu.output_pixels.pack("C*").sum }" if @conf.print_video_checksum && @video.class == Video
+NES::Impl::~Impl() {
+  std::cout << "fps: " << this->fps_ << std::endl;
   this->Rom->save_battery();
-#endif
+}
 
 void NES::Impl::reset() {
   this->Cpu->reset();
@@ -83,6 +75,7 @@ void NES::Impl::reset() {
   this->Cpu->boot();
   this->Rom->load_battery();
 }
+
 void NES::Impl::run() {
   this->reset();
 
@@ -95,8 +88,6 @@ void NES::Impl::run() {
       this->step();
     }
   }
-  // ensure
-  //   dispose
 }
 
 void NES::Impl::step() {
