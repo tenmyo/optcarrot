@@ -4,6 +4,9 @@
 #include <string>
 #include <vector>
 
+#include <iomanip>
+#include <iostream>
+
 namespace optcarrot {
 constexpr auto FOREVER_CLOCK = 0xffffffff;
 constexpr auto RP2A03_CC = 12;

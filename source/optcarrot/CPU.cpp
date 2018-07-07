@@ -15,9 +15,6 @@
 #include <array>
 #include <functional>
 
-#include <iomanip>
-#include <iostream>
-
 using namespace optcarrot;
 
 static constexpr address_t NMI_VECTOR = 0xfffa;
@@ -736,7 +733,7 @@ const std::array<std::function<void(CPU::Impl &)>, 0x100> CPU::Impl::DISPATCH =
       };
       std::function<void(CPU::Impl &)> STORE[8] = {
           store_mem, store_zpg, store_mem, store_mem,
-          nullptr,   store_zpg, nullptr,   store_mem};
+          store_mem, store_zpg, store_mem, store_mem};
       std::array<std::function<void(CPU::Impl &)>, 0x100> ary{};
       auto op2 = [&](std::vector<uint8_t> opcodes,
                      std::function<void(CPU::Impl &)> func) {
@@ -982,6 +979,11 @@ size_t CPU::Impl::update() {
 void CPU::Impl::boot() {
   this->clk = CLK_7;
   this->_pc = this->peek16(RESET_VECTOR);
+  {
+    std::cerr << "Use boot address: 0xC000 instead " << std::setw(4) << std::hex
+              << this->_pc << std::endl;
+    this->_pc = 0xC000;
+  }
 }
 
 void CPU::Impl::do_nmi(size_t clk_) {
@@ -996,16 +998,16 @@ void CPU::Impl::run() {
     do {
       this->opcode = this->fetch(this->_pc);
 
-      std::cout << std::setfill('0') << std::setw(4) << std::hex << this->_pc
-                << "  " << std::setw(2) << +this->opcode << " "
-                << "                                       "
-                << "A:" << +this->_a << " "
-                << "X:" << +this->_x << " "
-                << "Y:" << +this->_y << " "
-                << "P:" << +this->flags_pack() << " "
-                << "SP:" << +this->_sp << " "
-                << "CYC:" << std::setw(3) << std::dec << std::right
-                << this->clk / 4 % 341 << " " << std::endl;
+      std::cout << std::uppercase << std::setfill('0') << std::hex;
+      std::cout << std::setw(4) << this->_pc << "  ";
+      std::cout << std::setw(2) << +this->opcode << " "
+                << "A:" << std::setw(2) << +this->_a << " "
+                << "X:" << std::setw(2) << +this->_x << " "
+                << "Y:" << std::setw(2) << +this->_y << " "
+                << "P:" << std::setw(2) << +this->flags_pack() << " "
+                << "SP:" << std::setw(2) << +this->_sp << " "
+                << "CYC:" << std::setw(3) << std::dec << std::setfill(' ')
+                << std::right << (this->clk - CLK_7) / 4 % 341 << std::endl;
 
       // if @conf.loglevel >= 3
       //   @conf.debug("PC:%04X A:%02X X:%02X Y:%02X P:%02X SP:%02X CYC:%3d :
@@ -1045,7 +1047,7 @@ void CPU::Impl::do_isr(address_t vector) {
   this->clk += CLK_7;
   auto addr_ =
       (vector == NMI_VECTOR) ? NMI_VECTOR : this->fetch_irq_isr_vector();
-  this->_pc = peek16(addr_);
+  this->_pc = this->peek16(addr_);
 }
 
 address_t CPU::Impl::fetch_irq_isr_vector() {
