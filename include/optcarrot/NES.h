@@ -24,7 +24,6 @@ public:
 
 private:
   class Impl;
-  std::shared_ptr<Config> conf_;
   std::unique_ptr<Impl> p_;
 };
 } // namespace optcarrot
