@@ -9,7 +9,7 @@ namespace optcarrot {
 class Config {
 public:
   explicit Config(int /*argc*/, const char * /*unused*/ []) {}
-  size_t Frames{200};
+  size_t Frames{180};
   bool UseNestopiaPalette{};
   bool SpriteLimit{};
   // TODO(tenmyo): Config: Config
