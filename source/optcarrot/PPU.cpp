@@ -104,8 +104,40 @@ private:
   void update_scroll_address_line();
   bool isActive();
   uint8_t io_latch_mask(uint8_t data);
+  // # helper methods for PPU#run
+  void open_pattern(address_t exp);
+  address_t open_sprite(size_t buffer_idx);
+  void load_sprite(uint8_t pat0, uint8_t pat1, size_t buffer_idx);
   // # actions for PPU#run
+  void open_name();
+  void fetch_name();
+  void open_attr();
+  void fetch_attr();
+  void fetch_bg_pattern_0();
+  void fetch_bg_pattern_1();
+  void scroll_clock_x();
+  void scroll_reset_x();
+  void scroll_clock_y();
+  void preload_tiles();
+  void load_tiles();
+  void evaluate_sprites_even();
+  void evaluate_sprites_odd();
+  void evaluate_sprites_odd_phase_1();
+  void evaluate_sprites_odd_phase_2();
+  void evaluate_sprites_odd_phase_3();
+  void evaluate_sprites_odd_phase_4();
+  void evaluate_sprites_odd_phase_5();
+  void evaluate_sprites_odd_phase_6();
+  void evaluate_sprites_odd_phase_7();
+  void evaluate_sprites_odd_phase_8();
+  void evaluate_sprites_odd_phase_9();
+  void load_extended_sprites();
+  void render_pixel();
+  void batch_render_eight_pixels();
   void boot();
+  void vblank_0();
+  void vblank_1();
+  void vblank_2();
   void update_enabled_flags();
   void update_enabled_flags_edge();
   // # default core
@@ -753,10 +785,139 @@ uint8_t PPU::Impl::io_latch_mask(uint8_t data) {
   return data;
 }
 
+// ###########################################################################
+// # helper methods for PPU#run
+void PPU::Impl::open_pattern(address_t /*exp*/) {
+  // TODO(tenmyo): PPU::Impl::open_pattern()
+}
+
+address_t PPU::Impl::open_sprite(size_t /*buffer_idx*/) {
+  // TODO(tenmyo): PPU::Impl::open_sprite()
+}
+
+void PPU::Impl::load_sprite(uint8_t /*pat0*/, uint8_t /*pat1*/,
+                            size_t /*buffer_idx*/) {
+  // TODO(tenmyo): PPU::Impl::load_sprite()
+}
+
+// ###########################################################################
+// # actions for PPU#run
+void PPU::Impl::open_name() {
+  // TODO(tenmyo): PPU::Impl::open_name()
+}
+
+void PPU::Impl::fetch_name() {
+  // TODO(tenmyo): PPU::Impl::fetch_name()
+}
+
+void PPU::Impl::open_attr() {
+  // TODO(tenmyo): PPU::Impl::open_attr()
+}
+
+void PPU::Impl::fetch_attr() {
+  // TODO(tenmyo): PPU::Impl::fetch_attr()
+}
+
+void PPU::Impl::fetch_bg_pattern_0() {
+  // TODO(tenmyo): PPU::Impl::fetch_bg_pattern_0()
+}
+
+void PPU::Impl::fetch_bg_pattern_1() {
+  // TODO(tenmyo): PPU::Impl::fetch_bg_pattern_1()
+}
+
+void PPU::Impl::scroll_clock_x() {
+  // TODO(tenmyo): PPU::Impl::scroll_clock_x()
+}
+
+void PPU::Impl::scroll_reset_x() {
+  // TODO(tenmyo): PPU::Impl::scroll_reset_x()
+}
+
+void PPU::Impl::scroll_clock_y() {
+  // TODO(tenmyo): PPU::Impl::scroll_clock_y()
+}
+
+void PPU::Impl::preload_tiles() {
+  // TODO(tenmyo): PPU::Impl::preload_tiles()
+}
+
+void PPU::Impl::load_tiles() {
+  // TODO(tenmyo): PPU::Impl::load_tiles()
+}
+
+void PPU::Impl::evaluate_sprites_even() {
+  // TODO(tenmyo): PPU::Impl::evaluate_sprites_even()
+}
+
+void PPU::Impl::evaluate_sprites_odd() {
+  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd()
+}
+
+void PPU::Impl::evaluate_sprites_odd_phase_1() {
+  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_1()
+}
+
+void PPU::Impl::evaluate_sprites_odd_phase_2() {
+  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_2()
+}
+
+void PPU::Impl::evaluate_sprites_odd_phase_3() {
+  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_3()
+}
+
+void PPU::Impl::evaluate_sprites_odd_phase_4() {
+  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_4()
+}
+
+void PPU::Impl::evaluate_sprites_odd_phase_5() {
+  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_5()
+}
+
+void PPU::Impl::evaluate_sprites_odd_phase_6() {
+  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_6()
+}
+
+void PPU::Impl::evaluate_sprites_odd_phase_7() {
+  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_7()
+}
+
+void PPU::Impl::evaluate_sprites_odd_phase_8() {
+  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_8()
+}
+
+void PPU::Impl::evaluate_sprites_odd_phase_9() {
+  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_9()
+}
+
+void PPU::Impl::load_extended_sprites() {
+  // TODO(tenmyo): PPU::Impl::load_extended_sprites()
+}
+
+void PPU::Impl::render_pixel() {
+  // TODO(tenmyo): PPU::Impl::render_pixel()
+}
+
+void PPU::Impl::batch_render_eight_pixels() {
+  // TODO(tenmyo): PPU::Impl::batch_render_eight_pixels()
+}
+
 void PPU::Impl::boot() {
   this->vblank_ = true;
   this->hclk_ = HCLOCK_DUMMY;
   this->hclk_target_ = FOREVER_CLOCK;
+}
+
+void PPU::Impl::vblank_0() {
+  // TODO(tenmyo): PPU::Impl::vblank_0()
+}
+
+void PPU::Impl::vblank_1() {
+  // TODO(tenmyo): PPU::Impl::vblank_1()
+}
+
+void PPU::Impl::vblank_2() {
+  // TODO(tenmyo): PPU::Impl::vblank_2()
 }
 
 void PPU::Impl::update_enabled_flags() {
@@ -821,12 +982,390 @@ void PPU::Impl::wait_two_clocks() {
   this->wait_zero_clocks();
 }
 
-void PPU::Impl::main_loop() { // TODO(tenmyo): PPU::Impl::main_loop()
+// ### main-loop structure
+// #
+// # # wait for boot
+// # clk_685
+// #
+// # loop do
+// #   # pre-render scanline
+// #   clk_341, clk_342, ..., clk_659
+// #   while true
+// #     # visible scanline (not shown)
+// #     clk_320, clk_321, ..., clk_337
+// #
+// #     # increment scanline
+// #     clk_338
+// #     break if @scanline == 240
+// #
+// #     # visible scanline (shown)
+// #     clk_0, clk_1, ..., clk_319
+// #   end
+// #
+// #   # post-render sacnline (vblank)
+// #   do_681,682,684
+// # end
+void PPU::Impl::main_loop() {
+  // when 685
   this->wait_frame();
+
+  // wait for boot
   this->boot();
   this->wait_frame();
+
   for (;;) {
-    this->wait_one_clock();
+    // pre-render scanline_
+
+    for (size_t i = 341; i <= 589; i += 8) {
+      // when 341, 349, ..., 589
+      if (this->hclk_ == 341) {
+        this->sp_overflow_ = false;
+        this->sp_zero_hit_ = false;
+        this->vblanking_ = false;
+        this->vblank_ = false;
+        this->scanline_ = SCANLINE_HDUMMY;
+      }
+      this->open_name();
+      this->wait_two_clocks();
+
+      // when 343, 351, ..., 591
+      this->open_attr();
+      this->wait_two_clocks();
+
+      // when 345, 353, ..., 593
+      this->open_pattern(this->bg_pattern_base_);
+      this->wait_two_clocks();
+
+      // when 347, 355, ..., 595
+      this->open_pattern(this->io_addr_ | 8);
+      this->wait_two_clocks();
+    }
+
+    for (size_t i = 597; i <= 653; i += 8) {
+      // when 597, 605, ..., 653
+      if (this->any_show_) {
+        if (this->hclk_ == 645) {
+          this->scroll_addr_0_4_ = this->scroll_latch_ & 0x001f;
+          this->scroll_addr_5_14_ = this->scroll_latch_ & 0x7fe0;
+          this->name_io_addr_ =
+              ((this->scroll_addr_0_4_ | this->scroll_addr_5_14_) & 0x0fff) |
+              0x2000; // make cache consistent
+        }
+      }
+      this->open_name();
+      this->wait_two_clocks();
+
+      // when 599, 607, ..., 655
+      // Nestopia uses open_name here?
+      this->open_attr();
+      this->wait_two_clocks();
+
+      // when 601, 609, ..., 657
+      this->open_pattern(this->pattern_end_);
+      this->wait_two_clocks();
+
+      // when 603, 611, ..., 659
+      this->open_pattern(this->io_addr_ | 8);
+      if (this->hclk_ == 659) {
+        this->hclk_ = 320;
+        this->hclk_ += HCLOCK_DUMMY;
+        this->hclk_target_ -= HCLOCK_DUMMY;
+      } else {
+        this->wait_two_clocks();
+      }
+      this->wait_zero_clocks();
+    }
+
+    for (;;) {
+      // visible scanline (not shown)
+
+      // when 320
+      this->load_extended_sprites();
+      this->open_name();
+      if (this->any_show_) {
+        this->sp_latch_ = this->sp_ram_.at(0);
+      }
+      this->sp_buffered_ = 0;
+      this->sp_zero_in_line_ = false;
+      this->sp_index_ = 0;
+      this->sp_phase_ = 0;
+      this->wait_one_clock();
+
+      // when 321
+      this->fetch_name();
+      this->wait_one_clock();
+
+      // when 322
+      this->open_attr();
+      this->wait_one_clock();
+
+      // when 323
+      this->fetch_attr();
+      this->scroll_clock_x();
+      this->wait_one_clock();
+
+      // when 324
+      this->open_pattern(this->io_pattern_);
+      this->wait_one_clock();
+
+      // when 325
+      this->fetch_bg_pattern_0();
+      this->wait_one_clock();
+
+      // when 326
+      this->open_pattern(this->io_pattern_ | 8);
+      this->wait_one_clock();
+
+      // when 327
+      this->fetch_bg_pattern_1();
+      this->wait_one_clock();
+
+      // when 328
+      this->preload_tiles();
+      this->open_name();
+      this->wait_one_clock();
+
+      // when 329
+      this->fetch_name();
+      this->wait_one_clock();
+
+      // when 330
+      this->open_attr();
+      this->wait_one_clock();
+
+      // when 331
+      this->fetch_attr();
+      this->scroll_clock_x();
+      this->wait_one_clock();
+
+      // when 332
+      this->open_pattern(this->io_pattern_);
+      this->wait_one_clock();
+
+      // when 333
+      this->fetch_bg_pattern_0();
+      this->wait_one_clock();
+
+      // when 334
+      this->open_pattern(this->io_pattern_ | 8);
+      this->wait_one_clock();
+
+      // when 335
+      this->fetch_bg_pattern_1();
+      this->wait_one_clock();
+
+      // when 336
+      this->open_name();
+      this->wait_one_clock();
+
+      // when 337
+      if (this->any_show_) {
+        this->update_enabled_flags_edge();
+        if ((this->scanline_ == SCANLINE_HDUMMY) && this->odd_frame_) {
+          this->cpu_->next_frame_clock(RP2C02_HVSYNC_1);
+        }
+      }
+      this->wait_one_clock();
+
+      // when 338
+      this->open_name();
+      this->scanline_ += 1;
+      if (this->scanline_ != SCANLINE_VBLANK) {
+        size_t line;
+        if (this->any_show_) {
+          line = ((this->scanline_ != 0) || !this->odd_frame_) ? 341 : 340;
+        } else {
+          this->update_enabled_flags_edge();
+          line = 341;
+        }
+        this->hclk_ = 0;
+        this->vclk_ += line;
+        this->hclk_target_ =
+            (this->hclk_target_ <= line) ? 0 : this->hclk_target_ - line;
+      } else {
+        this->hclk_ = HCLOCK_VBLANK_0;
+        this->wait_zero_clocks();
+        break;
+      }
+      this->wait_zero_clocks();
+
+      // visible scanline (shown)
+      for (size_t i = 0; i <= 248; i += 8) {
+        // when 0, 8, ..., 248
+        if (this->any_show_) {
+          if (this->hclk_ == 64) {
+            this->sp_addr_ = this->regs_oam_ & 0xf8; // SP_OFFSET_TO_0_1
+            this->sp_phase_ = 0;
+            this->sp_latch_ = 0xff;
+          }
+          this->load_tiles();
+          this->batch_render_eight_pixels();
+          if (this->hclk_ >= 64) {
+            this->evaluate_sprites_even();
+          }
+          this->open_name();
+        }
+        this->render_pixel();
+        this->wait_one_clock();
+
+        // when 1, 9, ..., 249
+        if (this->any_show_) {
+          this->fetch_name();
+          if (this->hclk_ >= 64) {
+            this->evaluate_sprites_odd();
+          }
+        }
+        this->render_pixel();
+        this->wait_one_clock();
+
+        // when 2, 10, ..., 250
+        if (this->any_show_) {
+          if (this->hclk_ >= 64) {
+            this->evaluate_sprites_even();
+          }
+          this->open_attr();
+        }
+        this->render_pixel();
+        this->wait_one_clock();
+
+        // when 3, 11, ..., 251
+        if (this->any_show_) {
+          this->fetch_attr();
+          if (this->hclk_ >= 64) {
+            this->evaluate_sprites_odd();
+          }
+          if (this->hclk_ == 251) {
+            this->scroll_clock_y();
+          }
+          this->scroll_clock_x();
+        }
+        this->render_pixel();
+        this->wait_one_clock();
+
+        // when 4, 12, ..., 252
+        if (this->any_show_) {
+          if (this->hclk_ >= 64) {
+            this->evaluate_sprites_even();
+          }
+          this->open_pattern(this->io_pattern_);
+        }
+        this->render_pixel();
+        this->wait_one_clock();
+
+        // when 5, 13, ..., 253
+        if (this->any_show_) {
+          this->fetch_bg_pattern_0();
+          if (this->hclk_ >= 64) {
+            this->evaluate_sprites_odd();
+          }
+        }
+        this->render_pixel();
+        this->wait_one_clock();
+
+        // when 6, 14, ..., 254
+        if (this->any_show_) {
+          if (this->hclk_ >= 64) {
+            this->evaluate_sprites_even();
+          }
+          this->open_pattern(this->io_pattern_ | 8);
+        }
+        this->render_pixel();
+        this->wait_one_clock();
+
+        // when 7, 15, ..., 255
+        if (this->any_show_) {
+          this->fetch_bg_pattern_1();
+          if (this->hclk_ >= 64) {
+            this->evaluate_sprites_odd();
+          }
+        }
+        this->render_pixel();
+        if (this->any_show_) {
+          if (this->hclk_ != 255) {
+            this->update_enabled_flags();
+          }
+        }
+        this->wait_one_clock();
+      }
+
+      for (size_t i = 256; i <= 312; i += 8) {
+        if (this->hclk_ == 256) {
+          // when 256
+          this->open_name();
+          if (this->any_show_) {
+            this->sp_latch_ = 0xff;
+          }
+          this->wait_one_clock();
+
+          // when 257
+          this->scroll_reset_x();
+          this->sp_visible_ = false;
+          this->sp_active_ = false;
+          this->wait_one_clock();
+        } else {
+          // when 264, 272, ..., 312
+          this->open_name();
+          this->wait_two_clocks();
+        }
+
+        // when 258, 266, ..., 314
+        // Nestopia uses open_name here?
+        this->open_attr();
+        this->wait_two_clocks();
+
+        // when 260, 268, ..., 316
+        if (this->any_show_) {
+          auto buffer_idx = (this->hclk_ - 260) / 2;
+          this->open_pattern((buffer_idx >= this->sp_buffered_)
+                                 ? this->pattern_end_
+                                 : this->open_sprite(buffer_idx));
+          if (this->scanline_ == 238) {
+            if (this->hclk_ == 316) {
+              this->regs_oam_ = 0;
+            }
+          }
+        }
+        this->wait_one_clock();
+
+        // when 261, 269, ..., 317
+        if (this->any_show_) {
+          if (((this->hclk_ - 261) / 2) < this->sp_buffered_) {
+            this->io_pattern_ = this->chr_mem_->at(this->io_addr_ & 0x1fff);
+          }
+        }
+        this->wait_one_clock();
+
+        // when 262, 270, ..., 318
+        this->open_pattern(this->io_addr_ | 8);
+        this->wait_one_clock();
+
+        // when 263, 271, ..., 319
+        if (this->any_show_) {
+          auto buffer_idx = (this->hclk_ - 263) / 2;
+          if (buffer_idx < this->sp_buffered_) {
+            auto pat0 = this->io_pattern_;
+            auto pat1 = this->chr_mem_->at(this->io_addr_ & 0x1fff);
+            if ((pat0 != 0) || (pat1 != 0)) {
+              this->load_sprite(pat0, pat1, buffer_idx);
+            }
+          }
+        }
+        this->wait_one_clock();
+      }
+    }
+
+    // post-render scanline (vblank)
+
+    // when 681
+    this->vblank_0();
+    this->wait_zero_clocks();
+
+    // when 682
+    this->vblank_1();
+    this->wait_zero_clocks();
+
+    // when 684
+    this->vblank_2();
     this->wait_frame();
   }
 }
