@@ -1014,16 +1014,16 @@ void CPU::Impl::run() {
     do {
       this->opcode = this->fetch(this->_pc);
 
-      std::cout << std::uppercase << std::setfill('0') << std::hex;
-      std::cout << std::setw(4) << this->_pc << "  ";
-      std::cout << std::setw(2) << +this->opcode << " "
-                << "A:" << std::setw(2) << +this->_a << " "
-                << "X:" << std::setw(2) << +this->_x << " "
-                << "Y:" << std::setw(2) << +this->_y << " "
-                << "P:" << std::setw(2) << +this->flags_pack() << " "
-                << "SP:" << std::setw(2) << +this->_sp << " "
-                << "CYC:" << std::setw(3) << std::dec << std::setfill(' ')
-                << std::right << (this->clk - CLK_7) / 4 % 341 << std::endl;
+      // std::cout << std::uppercase << std::setfill('0') << std::hex;
+      // std::cout << std::setw(4) << this->_pc << "  ";
+      // std::cout << std::setw(2) << +this->opcode << " "
+      // << "A:" << std::setw(2) << +this->_a << " "
+      // << "X:" << std::setw(2) << +this->_x << " "
+      // << "Y:" << std::setw(2) << +this->_y << " "
+      // << "P:" << std::setw(2) << +this->flags_pack() << " "
+      // << "SP:" << std::setw(2) << +this->_sp << " "
+      // << "CYC:" << std::setw(3) << std::dec << std::setfill(' ')
+      // << std::right << (this->clk - CLK_7) / 4 % 341 << std::endl;
 
       // if @conf.loglevel >= 3
       //   @conf.debug("PC:%04X A:%02X X:%02X Y:%02X P:%02X SP:%02X CYC:%3d :
