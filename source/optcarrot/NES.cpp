@@ -98,6 +98,7 @@ void NES::Impl::run() {
 }
 
 void NES::Impl::step() { // TODO(tenmyo): NES::Impl::step
+  std::cout << "Frame: " << this->Frame << std::endl;
   this->Ppu->setup_frame();
   this->Cpu->run();
   this->Ppu->vsync();
