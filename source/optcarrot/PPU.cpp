@@ -13,6 +13,7 @@
 
 // System headers
 #include <algorithm>
+#include <cassert>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -20,8 +21,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-
-#include <iostream>
 
 using namespace optcarrot;
 
@@ -59,7 +58,7 @@ static constexpr std::tuple<size_t, size_t, size_t> BOOT_FRAME = {
     RP2C02_HVSYNCBOOT};
 
 // constants related to OAM(sprite)
-static constexpr int SP_PIXEL_POSITIONS[2][8] = {
+static constexpr uint8_t SP_PIXEL_POSITIONS[2][8] = {
     {3, 7, 2, 6, 1, 5, 0, 4}, // normal
     {4, 0, 5, 1, 6, 2, 7, 3}, // flip
 };
@@ -108,6 +107,7 @@ private:
   void open_pattern(address_t exp);
   address_t open_sprite(size_t buffer_idx);
   void load_sprite(uint8_t pat0, uint8_t pat1, size_t buffer_idx);
+  void update_address_line();
   // # actions for PPU#run
   void open_name();
   void fetch_name();
@@ -133,7 +133,6 @@ private:
   void evaluate_sprites_odd_phase_9();
   void load_extended_sprites();
   void render_pixel();
-  void batch_render_eight_pixels();
   void boot();
   void vblank_0();
   void vblank_1();
@@ -191,7 +190,7 @@ private:
   bool vblank_{};
   // PPU-nametable interface
   address_t io_addr_{};
-  uint8_t io_pattern_{};
+  address_t io_pattern_{};
 
   // the current scanline
   bool odd_frame_{};
@@ -201,7 +200,7 @@ private:
   bool scroll_toggle_{};
   address_t scroll_latch_{};
   uint8_t scroll_xfine_{};
-  address_t scroll_addr_0_4_{};
+  uint8_t scroll_addr_0_4_{};
   address_t scroll_addr_5_14_{};
   address_t name_io_addr_{};
 
@@ -238,12 +237,12 @@ private:
   // 8 sprites per line are allowed in standard NES, but a user may remove this
   // limit.
   const uint8_t kSpLimit;
-  std::vector<int32_t> sp_buffer_;
+  std::vector<uint8_t> sp_buffer_;
   uint8_t sp_buffered_{};
   bool sp_visible_{};
-  std::array<std::tuple<bool, bool, uint32_t> *, 264>
+  std::array<std::tuple<bool, bool, uint8_t> *, 264>
       sp_map_{}; // [[behind?, zero?, color]]
-  std::array<std::tuple<bool, bool, uint32_t>, 264>
+  std::array<std::tuple<bool, bool, uint8_t>, 264>
       sp_map_buffer_; // preallocation for @sp_map
   bool sp_zero_in_line_{};
 
@@ -729,34 +728,8 @@ void PPU::Impl::update_output_color() {
 
 void PPU::Impl::update_vram_addr() {
   // TODO(tenmyo): PPU::Impl::update_vram_addr()
-  std::cerr << __PRETTY_FUNCTION__ << std::endl;
+  assert(false);
 }
-#if 0
-def update_vram_addr
-  if @vram_addr_inc == 32
-    if active?
-      if @scroll_addr_5_14 & 0x7000 == 0x7000
-        @scroll_addr_5_14 &= 0x0fff
-        case @scroll_addr_5_14 & 0x03e0
-        when 0x03a0 then @scroll_addr_5_14 ^= 0x0800
-        when 0x03e0 then @scroll_addr_5_14 &= 0x7c00
-        else             @scroll_addr_5_14 += 0x20
-        end
-      else
-        @scroll_addr_5_14 += 0x1000
-      end
-    else
-      @scroll_addr_5_14 += 0x20
-    end
-  elsif @scroll_addr_0_4 < 0x1f
-    @scroll_addr_0_4 += 1
-  else
-    @scroll_addr_0_4 = 0
-    @scroll_addr_5_14 += 0x20
-  end
-  update_scroll_address_line
-end
-#endif
 
 void PPU::Impl::update_scroll_address_line() {
   this->name_io_addr_ =
@@ -787,119 +760,355 @@ uint8_t PPU::Impl::io_latch_mask(uint8_t data) {
 
 // ###########################################################################
 // # helper methods for PPU#run
-void PPU::Impl::open_pattern(address_t /*exp*/) {
-  // TODO(tenmyo): PPU::Impl::open_pattern()
+void PPU::Impl::open_pattern(address_t exp) {
+  if (!this->any_show_) {
+    return;
+  }
+  this->io_addr_ = exp;
+  this->update_address_line();
 }
 
-address_t PPU::Impl::open_sprite(size_t /*buffer_idx*/) {
-  // TODO(tenmyo): PPU::Impl::open_sprite()
+address_t PPU::Impl::open_sprite(size_t buffer_idx) {
+  auto flip_v = biti(this->sp_buffer_.at(buffer_idx + 2),
+                     7); // OAM byte2 bit7: "Flip vertically" flag
+  auto tmp =
+      (this->scanline_ - this->sp_buffer_.at(buffer_idx)) ^ (flip_v * 0xf);
+  auto byte1 = this->sp_buffer_.at(buffer_idx + 1);
+  auto addr = (this->sp_height_ == 16)
+                  ? (((byte1 & 0x01) << 12) | ((byte1 & 0xfe) << 4) |
+                     (biti(static_cast<size_t>(tmp), 3) * 0x10))
+                  : (this->sp_base_ | (byte1 << 4));
+  return static_cast<address_t>(addr | (tmp & 7));
 }
 
-void PPU::Impl::load_sprite(uint8_t /*pat0*/, uint8_t /*pat1*/,
-                            size_t /*buffer_idx*/) {
-  // TODO(tenmyo): PPU::Impl::load_sprite()
+void PPU::Impl::load_sprite(uint8_t pat0, uint8_t pat1, size_t buffer_idx) {
+  auto byte2 = this->sp_buffer_.at(buffer_idx + 2);
+  auto pos = SP_PIXEL_POSITIONS[biti(
+      byte2, 6)]; // OAM byte2 bit6: "Flip horizontally" flag
+  auto pat = (pat0 >> 1 & 0x55) | (pat1 & 0xaa) |
+             (((pat0 & 0x55) | ((pat1 << 1) & 0xaa)) << 8);
+  auto x_base = this->sp_buffer_.at(buffer_idx + 3);
+  auto palette_base = static_cast<uint8_t>(
+      0x10 | ((byte2 & 3) << 2)); // OAM byte2 bit0-1: Palette
+  if (!this->sp_visible_) {
+    this->sp_map_.fill(nullptr);
+    this->sp_visible_ = true;
+  }
+  for (size_t dx = 0; dx < 8; ++dx) {
+    auto x = x_base + dx;
+    uint8_t clr = (pat >> (pos[dx] * 2)) & 3;
+    if (static_cast<bool>(this->sp_map_.at(x)) || (clr == 0)) {
+      continue;
+    }
+    this->sp_map_.at(x) = &this->sp_map_buffer_.at(x);
+    auto &sprite = this->sp_map_buffer_.at(x);
+    // sprite[0]: behind flag, sprite[1]: zero hit flag, sprite[2]: color
+    std::get<0>(sprite) =
+        bit(byte2, 5); // OAM byte2 bit5: "Behind background" flag
+    std::get<1>(sprite) = ((buffer_idx == 0) && this->sp_zero_in_line_);
+    std::get<2>(sprite) = palette_base + clr;
+  }
+  this->sp_active_ = this->sp_enabled_;
+}
+
+void PPU::Impl::update_address_line() {
+  // TODO(tenmyo): PPU::Impl::update_address_line()
 }
 
 // ###########################################################################
 // # actions for PPU#run
 void PPU::Impl::open_name() {
-  // TODO(tenmyo): PPU::Impl::open_name()
+  if (!this->any_show_) {
+    return;
+  }
+  this->io_addr_ = this->name_io_addr_;
+  this->update_address_line();
 }
 
 void PPU::Impl::fetch_name() {
-  // TODO(tenmyo): PPU::Impl::fetch_name()
+  if (!this->any_show_) {
+    return;
+  }
+  this->io_pattern_ =
+      this->name_lut_.at(this->scroll_addr_0_4_ + this->scroll_addr_5_14_ +
+                         this->bg_pattern_base_15_);
 }
 
 void PPU::Impl::open_attr() {
-  // TODO(tenmyo): PPU::Impl::open_attr()
+  if (!this->any_show_) {
+    return;
+  }
+  auto &lut =
+      *this->attr_lut_.at(this->scroll_addr_0_4_ + this->scroll_addr_5_14_);
+  this->io_addr_ = std::get<0>(lut);
+  this->bg_pattern_lut_fetched_ = std::get<1>(lut);
+  this->update_address_line();
 }
 
 void PPU::Impl::fetch_attr() {
-  // TODO(tenmyo): PPU::Impl::fetch_attr()
+  if (!this->any_show_) {
+    return;
+  }
+  this->bg_pattern_lut_ = this->bg_pattern_lut_fetched_;
+  // raise unless @bg_pattern_lut_fetched ==
+  //   @nmt_ref[@io_addr >> 10 & 3][@io_addr & 0x03ff] >>
+  //     ((@scroll_addr_0_4 & 0x2) | (@scroll_addr_5_14[6] * 0x4)) & 3
 }
 
 void PPU::Impl::fetch_bg_pattern_0() {
-  // TODO(tenmyo): PPU::Impl::fetch_bg_pattern_0()
+  if (!this->any_show_) {
+    return;
+  }
+  this->bg_pattern_ = this->chr_mem_->at(this->io_addr_ & 0x1fff);
 }
 
 void PPU::Impl::fetch_bg_pattern_1() {
-  // TODO(tenmyo): PPU::Impl::fetch_bg_pattern_1()
+  if (!this->any_show_) {
+    return;
+  }
+  this->bg_pattern_ |= this->chr_mem_->at(this->io_addr_ & 0x1fff) * 0x100;
 }
 
 void PPU::Impl::scroll_clock_x() {
-  // TODO(tenmyo): PPU::Impl::scroll_clock_x()
+  if (!this->any_show_) {
+    return;
+  }
+  if (this->scroll_addr_0_4_ < 0x001f) {
+    this->scroll_addr_0_4_ += 1;
+    this->name_io_addr_ += 1; // make cache consistent
+  } else {
+    this->scroll_addr_0_4_ = 0;
+    this->scroll_addr_5_14_ ^= 0x0400;
+    this->name_io_addr_ ^= 0x041f; // make cache consistent
+  }
 }
 
 void PPU::Impl::scroll_reset_x() {
-  // TODO(tenmyo): PPU::Impl::scroll_reset_x()
+  if (!this->any_show_) {
+    return;
+  }
+  this->scroll_addr_0_4_ = this->scroll_latch_ & 0x001f;
+  this->scroll_addr_5_14_ =
+      (this->scroll_addr_5_14_ & 0x7be0) | (this->scroll_latch_ & 0x0400);
+  this->name_io_addr_ =
+      ((this->scroll_addr_0_4_ | this->scroll_addr_5_14_) & 0x0fff) |
+      0x2000; // make cache consistent
 }
 
 void PPU::Impl::scroll_clock_y() {
-  // TODO(tenmyo): PPU::Impl::scroll_clock_y()
+  if (!this->any_show_) {
+    return;
+  }
+  if ((this->scroll_addr_5_14_ & 0x7000) != 0x7000) {
+    this->scroll_addr_5_14_ += 0x1000;
+  } else {
+    auto mask = this->scroll_addr_5_14_ & 0x03e0;
+    if (mask == 0x03a0) {
+      this->scroll_addr_5_14_ ^= 0x0800;
+      this->scroll_addr_5_14_ &= 0x0c00;
+    } else if (mask == 0x03e0) {
+      this->scroll_addr_5_14_ &= 0x0c00;
+    } else {
+      this->scroll_addr_5_14_ = (this->scroll_addr_5_14_ & 0x0fe0) + 32;
+    }
+  }
+
+  this->name_io_addr_ =
+      ((this->scroll_addr_0_4_ | this->scroll_addr_5_14_) & 0x0fff) |
+      0x2000; // make cache consistent
 }
 
 void PPU::Impl::preload_tiles() {
-  // TODO(tenmyo): PPU::Impl::preload_tiles()
+  if (!this->any_show_) {
+    return;
+  }
+  for (size_t i = 0; i < 8; ++i) {
+    this->bg_pixels_.at(this->scroll_xfine_ + i) =
+        this->bg_pattern_lut_->at(this->bg_pattern_).at(i);
+  }
 }
 
 void PPU::Impl::load_tiles() {
-  // TODO(tenmyo): PPU::Impl::load_tiles()
+  if (!this->any_show_) {
+    return;
+  }
+  std::rotate(this->bg_pixels_.begin(), this->bg_pixels_.begin() + 8,
+              this->bg_pixels_.end());
+  for (size_t i = 0; i < 8; ++i) {
+    this->bg_pixels_.at(this->scroll_xfine_ + i) =
+        this->bg_pattern_lut_->at(this->bg_pattern_).at(i);
+  }
 }
 
 void PPU::Impl::evaluate_sprites_even() {
-  // TODO(tenmyo): PPU::Impl::evaluate_sprites_even()
+  if (!this->any_show_) {
+    return;
+  }
+  this->sp_latch_ = this->sp_ram_.at(this->sp_addr_);
 }
 
 void PPU::Impl::evaluate_sprites_odd() {
-  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd()
+  if (!this->any_show_) {
+    return;
+  }
+
+  switch (this->sp_phase_) {
+  case 1:
+    this->evaluate_sprites_odd_phase_1();
+    break;
+  case 2:
+    this->evaluate_sprites_odd_phase_2();
+    break;
+  case 3:
+    this->evaluate_sprites_odd_phase_3();
+    break;
+  case 4:
+    this->evaluate_sprites_odd_phase_4();
+    break;
+  case 5:
+    this->evaluate_sprites_odd_phase_5();
+    break;
+  case 6:
+    this->evaluate_sprites_odd_phase_6();
+    break;
+  case 7:
+    this->evaluate_sprites_odd_phase_7();
+    break;
+  case 8:
+    this->evaluate_sprites_odd_phase_8();
+    break;
+  case 9:
+    this->evaluate_sprites_odd_phase_9();
+    break;
+  }
 }
 
 void PPU::Impl::evaluate_sprites_odd_phase_1() {
-  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_1()
+  this->sp_index_ += 1;
+  if ((this->sp_latch_ <= this->scanline_) &&
+      (this->scanline_ < (this->sp_latch_ + this->sp_height_))) {
+    this->sp_addr_ += 1;
+    this->sp_phase_ = 2;
+    this->sp_buffer_[this->sp_buffered_] = this->sp_latch_;
+  } else if (this->sp_index_ == 64) {
+    this->sp_addr_ = 0;
+    this->sp_phase_ = 9;
+  } else if (this->sp_index_ == 2) {
+    this->sp_addr_ = 8;
+  } else {
+    this->sp_addr_ += 4;
+  }
 }
 
 void PPU::Impl::evaluate_sprites_odd_phase_2() {
-  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_2()
+  this->sp_addr_ += 1;
+  this->sp_phase_ = 3;
+  this->sp_buffer_[this->sp_buffered_ + 1] = this->sp_latch_;
 }
 
 void PPU::Impl::evaluate_sprites_odd_phase_3() {
-  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_3()
+  this->sp_addr_ += 1;
+  this->sp_phase_ = 4;
+  this->sp_buffer_[this->sp_buffered_ + 2] = this->sp_latch_;
 }
 
 void PPU::Impl::evaluate_sprites_odd_phase_4() {
-  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_4()
+  this->sp_buffer_[this->sp_buffered_ + 3] = this->sp_latch_;
+  this->sp_buffered_ += 4;
+  if (this->sp_index_ != 64) {
+    this->sp_phase_ = ((this->sp_buffered_ != this->kSpLimit) ? 0 : 5);
+    if (this->sp_index_ != 2) {
+      this->sp_addr_ += 1;
+      this->sp_zero_in_line_ |= (this->sp_index_ == 1);
+    } else {
+      this->sp_addr_ = 8;
+    }
+  } else {
+    this->sp_addr_ = 0;
+    this->sp_phase_ = 9;
+  }
 }
 
 void PPU::Impl::evaluate_sprites_odd_phase_5() {
-  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_5()
+  if ((this->sp_latch_ <= this->scanline_) &&
+      (this->scanline_ < (this->sp_latch_ + this->sp_height_))) {
+    this->sp_phase_ = 6;
+    this->sp_addr_ = (this->sp_addr_ + 1) & 0xff;
+    this->sp_overflow_ = true;
+  } else {
+    this->sp_addr_ = ((this->sp_addr_ + 4) & 0xfc) + ((this->sp_addr_ + 1) & 3);
+    if (this->sp_addr_ <= 5) {
+      this->sp_phase_ = 9;
+      this->sp_addr_ &= 0xfc;
+    }
+  }
 }
 
 void PPU::Impl::evaluate_sprites_odd_phase_6() {
-  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_6()
+  this->sp_phase_ = 7;
+  this->sp_addr_ = (this->sp_addr_ + 1) & 0xff;
 }
 
 void PPU::Impl::evaluate_sprites_odd_phase_7() {
-  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_7()
+  this->sp_phase_ = 8;
+  this->sp_addr_ = (this->sp_addr_ + 1) & 0xff;
 }
 
 void PPU::Impl::evaluate_sprites_odd_phase_8() {
-  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_8()
+  this->sp_phase_ = 9;
+  this->sp_addr_ = (this->sp_addr_ + 1) & 0xff;
+  if ((this->sp_addr_ & 3) == 3) {
+    this->sp_addr_ += 1;
+  }
+  this->sp_addr_ &= 0xfc;
 }
 
 void PPU::Impl::evaluate_sprites_odd_phase_9() {
-  // TODO(tenmyo): PPU::Impl::evaluate_sprites_odd_phase_9()
+  this->sp_addr_ = (this->sp_addr_ + 4) & 0xff;
 }
 
 void PPU::Impl::load_extended_sprites() {
-  // TODO(tenmyo): PPU::Impl::load_extended_sprites()
+  if (!this->any_show_) {
+    return;
+  }
+  if (32 < this->sp_buffered_) {
+    auto buffer_idx = 32u;
+    do {
+      auto addr = this->open_sprite(buffer_idx);
+      auto pat0 = this->chr_mem_->at(addr);
+      auto pat1 = this->chr_mem_->at(addr | 8);
+      if ((pat0 != 0) || (pat1 != 0)) {
+        this->load_sprite(pat0, pat1, buffer_idx);
+      }
+      buffer_idx += 4;
+    } while (buffer_idx != this->sp_buffered_);
+  }
 }
 
 void PPU::Impl::render_pixel() {
-  // TODO(tenmyo): PPU::Impl::render_pixel()
-}
-
-void PPU::Impl::batch_render_eight_pixels() {
-  // TODO(tenmyo): PPU::Impl::batch_render_eight_pixels()
+  uint8_t pixel;
+  if (this->any_show_) {
+    pixel = this->bg_enabled_ ? this->bg_pixels_.at(this->hclk_ % 8) : 0;
+    auto sprite = this->sp_map_.at(this->hclk_);
+    if (this->sp_active_ && (sprite != nullptr)) {
+      if ((pixel % 4) == 0) {
+        pixel = std::get<2>(*sprite);
+      } else {
+        if (std::get<1>(*sprite) && (this->hclk_ != 255)) {
+          this->sp_zero_hit_ = true;
+        }
+        if (!std::get<0>(*sprite)) {
+          pixel = std::get<2>(*sprite);
+        }
+      }
+    }
+  } else {
+    pixel =
+        (((this->scroll_addr_5_14_ & 0x3f00) == 0x3f00) ? this->scroll_addr_0_4_
+                                                        : 0);
+    this->bg_pixels_.at(this->hclk_ % 8) = 0;
+  }
+  this->output_pixels_.push_back(this->output_color_.at(pixel));
 }
 
 void PPU::Impl::boot() {
@@ -909,19 +1118,30 @@ void PPU::Impl::boot() {
 }
 
 void PPU::Impl::vblank_0() {
-  // TODO(tenmyo): PPU::Impl::vblank_0()
+  this->vblanking_ = true;
+  this->hclk_ = HCLOCK_VBLANK_1;
 }
 
 void PPU::Impl::vblank_1() {
-  // TODO(tenmyo): PPU::Impl::vblank_1()
+  this->vblank_ = this->vblank_ || this->vblanking_;
+  this->vblanking_ = false;
+  this->sp_visible_ = false;
+  this->sp_active_ = false;
+  this->hclk_ = HCLOCK_VBLANK_2;
 }
 
 void PPU::Impl::vblank_2() {
-  // TODO(tenmyo): PPU::Impl::vblank_2()
+  this->vblank_ = this->vblank_ || this->vblanking_;
+  this->vblanking_ = false;
+  this->hclk_ = HCLOCK_DUMMY;
+  this->hclk_target_ = FOREVER_CLOCK;
+  if (this->need_nmi_ && this->vblank_) {
+    this->cpu_->do_nmi(this->cpu_->next_frame_clock());
+  }
 }
 
 void PPU::Impl::update_enabled_flags() {
-  if (this->any_show_) {
+  if (!this->any_show_) {
     return;
   }
   this->bg_enabled_ = this->bg_show_;
@@ -1199,7 +1419,7 @@ void PPU::Impl::main_loop() {
             this->sp_latch_ = 0xff;
           }
           this->load_tiles();
-          this->batch_render_eight_pixels();
+          // this->batch_render_eight_pixels();
           if (this->hclk_ >= 64) {
             this->evaluate_sprites_even();
           }
@@ -1343,7 +1563,7 @@ void PPU::Impl::main_loop() {
         if (this->any_show_) {
           auto buffer_idx = (this->hclk_ - 263) / 2;
           if (buffer_idx < this->sp_buffered_) {
-            auto pat0 = this->io_pattern_;
+            auto pat0 = static_cast<uint8_t>(this->io_pattern_);
             auto pat1 = this->chr_mem_->at(this->io_addr_ & 0x1fff);
             if ((pat0 != 0) || (pat1 != 0)) {
               this->load_sprite(pat0, pat1, buffer_idx);
