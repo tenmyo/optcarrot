@@ -35,14 +35,14 @@ public:
 
 private:
   std::shared_ptr<Config> conf_;
-  std::shared_ptr<Video> Video;
-  std::shared_ptr<CPU> Cpu;
-  std::shared_ptr<APU> Apu;
-  std::shared_ptr<PPU> Ppu;
-  std::shared_ptr<ROM> Rom;
+  std::shared_ptr<Video> video_;
+  std::shared_ptr<CPU> cpu_;
+  std::shared_ptr<APU> apu_;
+  std::shared_ptr<PPU> ppu_;
+  std::shared_ptr<ROM> rom_;
   std::shared_ptr<Pads> pads_;
-  size_t Frame;
-  size_t FrameTarget;
+  size_t frame_;
+  size_t frame_target_;
   size_t fps_{};
 
   void step();
@@ -51,16 +51,13 @@ private:
 };
 
 NES::Impl::Impl(std::shared_ptr<Config> conf)
-    : conf_(conf), Video(std::make_shared<SDL2Video>(conf)),
-      Cpu(std::make_shared<CPU>(conf)),
-      Apu(std::make_shared<APU>(conf, this->Cpu)),
-      Ppu(std::make_shared<PPU>(conf, this->Cpu, &this->Video->Palette)),
-      Rom(ROM::load(conf)), pads_(std::make_shared<Pads>(conf)), Frame(0),
-      FrameTarget(conf_->Frames) {
+    : conf_(conf), video_(std::make_shared<SDL2Video>(conf)),
+      cpu_(std::make_shared<CPU>(conf)), apu_(APU::create(conf, this->cpu_)),
+      ppu_(PPU::create(conf, this->cpu_, &this->video_->Palette)),
+      rom_(ROM::load(conf, this->ppu_)), pads_(std::make_shared<Pads>(conf)),
+      frame_(0), frame_target_(conf_->Frames) {
   // @video, @audio, @input = Driver.load(@conf)
-  this->Cpu->setAPU(this->Apu);
   // @apu = @cpu.apu = APU.new(@conf, @cpu, *@audio.spec)
-  this->Cpu->setPPU(this->Ppu);
   // @ppu = @cpu.ppu = PPU.new(@conf, @cpu, @video.palette)
   // @rom  = ROM.load(@conf, @cpu, @ppu)
   // @pads = Pads.new(@conf, @cpu, @apu)
@@ -70,50 +67,59 @@ NES::Impl::Impl(std::shared_ptr<Config> conf)
 
 NES::Impl::~Impl() {
   std::cout << "fps: " << this->fps_ << std::endl;
-  this->Rom->save_battery();
+  int sum = 0;
+  for (auto &c : this->ppu_->output_pixels()) {
+    sum += ((c >> 0) & 0xff);
+    sum += ((c >> 8) & 0xff);
+    sum += ((c >> 16) & 0xff);
+    sum += ((c >> 24) & 0xff);
+    sum &= 0xffff;
+  }
+  std::cout << "checksum: " << sum << std::endl;
+  this->rom_->save_battery();
 }
 
 void NES::Impl::reset() {
-  this->Cpu->reset();
-  this->Apu->reset();
-  this->Ppu->reset();
-  this->Rom->reset(this->Cpu);
+  this->cpu_->reset();
+  this->apu_->reset();
+  this->ppu_->reset();
+  this->rom_->reset(this->cpu_);
   this->pads_->reset();
-  this->Cpu->boot();
-  this->Rom->load_battery();
+  this->cpu_->boot();
+  this->rom_->load_battery();
 }
 
 void NES::Impl::run() {
   this->reset();
 
-  if (this->FrameTarget == 0) {
+  if (this->frame_target_ == 0) {
     for (;;) {
       this->step();
     }
   } else {
-    while (this->Frame < this->FrameTarget) {
+    while (this->frame_ < this->frame_target_) {
       this->step();
     }
   }
 }
 
 void NES::Impl::step() { // TODO(tenmyo): NES::Impl::step
-  std::cout << "Frame: " << this->Frame << std::endl;
-  this->Ppu->setup_frame();
-  this->Cpu->run();
-  this->Ppu->vsync();
+  std::cout << "[INFO] frame " << this->frame_ << std::endl;
+  this->ppu_->setup_frame();
+  this->cpu_->run();
+  this->ppu_->vsync();
   // @apu.vsync
-  this->Cpu->vsync();
-#if 0
-  @rom.vsync
+  this->cpu_->vsync();
+  this->rom_->vsync();
 
-  @input.tick(@frame, @pads)
-  @fps = @video.tick(@ppu.output_pixels)
+  //@input.tick(@frame, @pads)
+  // this->fps_ = this->video_->tick(this->ppu_->output_pixels());
+#if 0
   @fps_history << @fps if @conf.print_fps_history
   @audio.tick(@apu.output)
 #endif
 
-  this->Frame++;
+  this->frame_++;
   // @conf.info("frame #{ @frame }") if @conf.loglevel >= 2
 }
 

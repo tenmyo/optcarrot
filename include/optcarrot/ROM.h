@@ -7,11 +7,13 @@
 namespace optcarrot {
 class Config;
 class CPU;
+class PPU;
 
 /// Cartridge class (with NROM mapper implemented)
 class ROM {
 public:
-  explicit ROM(std::shared_ptr<Config> conf, std::string basename,
+  explicit ROM(const std::shared_ptr<Config> &conf,
+               const std::shared_ptr<PPU> &ppu, std::string basename,
                const std::vector<uint8_t> &buf);
   ~ROM();
   // disallow copy
@@ -22,17 +24,26 @@ public:
   ROM &operator=(ROM &&) noexcept = default;
 
   void reset(const std::shared_ptr<CPU> &cpu);
+  void vsync();
   void load_battery();
   void save_battery();
 
 public:
-  static std::unique_ptr<ROM> load(std::shared_ptr<Config> conf);
+  static std::unique_ptr<ROM> load(const std::shared_ptr<Config> &conf,
+                                   const std::shared_ptr<PPU> &ppu);
 
-  enum class MirroringKind { kNone, kHorizontal, kVertical, kFourScreen };
+  enum MirroringKind {
+    MK_None = 0,
+    MK_Horizontal,
+    MK_Vertical,
+    MK_FourScreen,
+    MK_First,
+    MK_Second,
+    MK_Num
+  };
 
 private:
   class Impl;
-  std::shared_ptr<Config> conf_;
   std::unique_ptr<Impl> p_;
 };
 } // namespace optcarrot

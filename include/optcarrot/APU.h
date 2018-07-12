@@ -9,7 +9,13 @@ class CPU;
 /// APU implementation (audio output)
 class APU {
 public:
-  explicit APU(std::shared_ptr<Config> conf, std::shared_ptr<CPU> cpu);
+  static std::shared_ptr<APU> create(const std::shared_ptr<Config> &conf,
+                                     std::shared_ptr<CPU> cpu);
+
+private:
+  explicit APU(const std::shared_ptr<Config> &conf, std::shared_ptr<CPU> cpu);
+
+public:
   ~APU();
   // disallow copy
   APU(const APU &) = delete;
@@ -28,7 +34,6 @@ public:
 
 private:
   class Impl;
-  std::shared_ptr<Config> conf_;
   std::unique_ptr<Impl> p_;
 };
 } // namespace optcarrot

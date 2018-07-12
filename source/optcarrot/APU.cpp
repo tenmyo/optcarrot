@@ -4,6 +4,8 @@
 // Main module header
 #include "optcarrot/APU.h"
 
+#include <utility>
+
 // Local/Private headers
 #include "optcarrot.h"
 #include "optcarrot/CPU.h"
@@ -26,8 +28,7 @@ public:
 
 class APU::Impl {
 public:
-  explicit Impl(std::shared_ptr<CPU> cpu)
-      : cpu_(std::move(cpu)) {} // TODO(tenmyo): APU::Impl
+  explicit Impl(const std::shared_ptr<Config> &conf, std::shared_ptr<CPU> cpu);
   void reset(bool mapping = true);
   // other APIs
   size_t do_clock();
@@ -48,6 +49,12 @@ private:
   size_t frame_counter{};
   DMC dmc;
 };
+
+APU::Impl::Impl(const std::shared_ptr<Config> & /*conf*/,
+                std::shared_ptr<CPU> cpu)
+    : cpu_(std::move(cpu)) {
+  // TODO(tenmyo): APU::Impl::Impl()
+}
 
 void APU::Impl::reset(bool mapping) {
   // TODO(tenmyo): APU::Impl::reset
@@ -102,13 +109,22 @@ void APU::Impl::reset_mapping() {
   // TODO(tenmyo): APU::Impl::reset_mapping
 }
 
-APU::APU(std::shared_ptr<Config> conf, std::shared_ptr<CPU> cpu)
-    : conf_(std::move(conf)), p_(std::make_unique<Impl>(std::move(cpu))) {}
-
+//==============================================================================
+//= Public API
+//==============================================================================
+std::shared_ptr<APU> APU::create(const std::shared_ptr<Config> &conf,
+                                 std::shared_ptr<CPU> cpu) {
+  struct impl : APU {
+    impl(const std::shared_ptr<Config> &conf, std::shared_ptr<CPU> cpu)
+        : APU(conf, std::move(cpu)) {}
+  };
+  auto self = std::make_shared<impl>(conf, cpu);
+  cpu->setAPU(self);
+  return self;
+}
+APU::APU(const std::shared_ptr<Config> &conf, std::shared_ptr<CPU> cpu)
+    : p_(std::make_unique<Impl>(conf, std::move(cpu))) {}
 APU::~APU() = default;
-
 void APU::reset() { this->p_->reset(); }
-
 size_t APU::do_clock() { return this->p_->do_clock(); }
-
 void APU::clock_dma(size_t clk) { this->p_->clock_dma(clk); }

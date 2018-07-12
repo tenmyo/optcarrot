@@ -80,12 +80,23 @@ static constexpr auto TILE_LUT = [] {
   return ary;
 }();
 
+static constexpr std::array<std::array<uint8_t, 4>, ROM::MK_Num> NMT_TABLE = {{
+    {{0, 0, 1, 1}}, // none
+    {{0, 0, 1, 1}}, // horizontal
+    {{0, 1, 0, 1}}, // vertical
+    {{0, 1, 2, 3}}, // four_screen
+    {{0, 0, 0, 0}}, // first
+    {{1, 1, 1, 1}}, // second
+}};
+
 class PPU::Impl {
 public:
   explicit Impl(std::shared_ptr<CPU> cpu, std::vector<uint32_t> *palette,
                 bool splite_limit);
   // # initialization
   void reset(bool mapping = true);
+  void set_chr_mem(std::array<uint8_t, 0x2000> *mem, bool writable);
+  void set_nametables(ROM::MirroringKind mode);
   void setup_lut();
   // # other APIs
   void update(size_t data_setup);
@@ -94,6 +105,8 @@ public:
   // # helpers
   void sync(size_t elapsed);
   void make_sure_invariants();
+
+  const std::array<uint32_t, 256 * 240> &output_pixels();
 
 private:
   // # initialization
@@ -164,7 +177,8 @@ private:
   std::array<std::array<uint8_t, 0x400>, 2> nmt_mem_{};
   std::array<std::array<uint8_t, 0x400> *, 4> nmt_ref_{
       &nmt_mem_[0], &nmt_mem_[1], &nmt_mem_[0], &nmt_mem_[1]};
-  std::vector<uint32_t> output_pixels_;
+  std::array<uint32_t, 256 * 240> output_pixels_{};
+  size_t output_pixels_index_{};
   std::array<uint32_t, 0x20> output_color_{};
   std::vector<uint32_t> *palette_{};
   std::array<uint8_t, 0x20> palette_ram_{};
@@ -271,7 +285,7 @@ private:
 
 PPU::Impl::Impl(std::shared_ptr<CPU> cpu, std::vector<uint32_t> *palette,
                 bool splite_limit)
-    : cpu_(std::move(cpu)), output_pixels_(256 * 240), palette_(palette),
+    : cpu_(std::move(cpu)), palette_(palette),
       kSpLimit((splite_limit ? 8 : 32) * 4), sp_buffer_(kSpLimit),
       lut_update_(nmt_ref_.size()) {
   for (auto &&m : this->nmt_mem_) {
@@ -632,6 +646,28 @@ void PPU::Impl::reset(bool mapping) {
   this->sp_zero_in_line_ = false;
 }
 
+void PPU::Impl::set_chr_mem(std::array<uint8_t, 0x2000> *mem, bool writable) {
+  this->chr_mem_ = mem;
+  this->chr_mem_writable_ = writable;
+}
+
+void PPU::Impl::set_nametables(enum ROM::MirroringKind mode) {
+  this->update(RP2C02_CC);
+  const auto &idxs = NMT_TABLE.at(mode);
+  bool check = true;
+  for (auto i = 0u; i < 4; ++i) {
+    check &= this->nmt_ref_.at(i) == &this->nmt_mem_.at(idxs.at(i));
+  }
+  if (check) {
+    return;
+  }
+  this->nmt_ref_.at(0) = &this->nmt_mem_.at(idxs.at(0));
+  this->nmt_ref_.at(1) = &this->nmt_mem_.at(idxs.at(1));
+  this->nmt_ref_.at(2) = &this->nmt_mem_.at(idxs.at(2));
+  this->nmt_ref_.at(3) = &this->nmt_mem_.at(idxs.at(3));
+  this->setup_lut();
+}
+
 void PPU::Impl::setup_lut() {
   this->lut_update_.clear();
   for (size_t i = 0; i <= 0xffff; ++i) {
@@ -682,7 +718,7 @@ void PPU::Impl::update(size_t data_setup) {
 }
 
 void PPU::Impl::setup_frame() {
-  this->output_pixels_.clear();
+  this->output_pixels_index_ = 0;
   this->odd_frame_ ^= 1;
   const auto &frame = (this->hclk_ == HCLOCK_DUMMY) ? DUMMY_FRAME : BOOT_FRAME;
   this->vclk_ = std::get<0>(frame);
@@ -695,8 +731,11 @@ void PPU::Impl::vsync() {
     this->hclk_target_ = FOREVER_CLOCK;
     this->run();
   }
-  while (this->output_pixels_.size() < 256 * 240) { // fill black
-    this->output_pixels_.push_back(this->palette_->at(15));
+  while (this->output_pixels_index_ <
+         this->output_pixels_.size()) { // fill black
+    this->output_pixels_.at(this->output_pixels_index_) =
+        this->palette_->at(15);
+    this->output_pixels_index_ += 1;
   }
 }
 
@@ -706,6 +745,10 @@ void PPU::Impl::sync(size_t elapsed) {
   }
   this->hclk_target_ = elapsed / RP2C02_CC - this->vclk_;
   this->run();
+}
+
+const std::array<uint32_t, 256 * 240> &PPU::Impl::output_pixels() {
+  return this->output_pixels_;
 }
 
 void PPU::Impl::make_sure_invariants() {
@@ -727,8 +770,34 @@ void PPU::Impl::update_output_color() {
 }
 
 void PPU::Impl::update_vram_addr() {
-  // TODO(tenmyo): PPU::Impl::update_vram_addr()
-  assert(false);
+  if (this->vram_addr_inc_ == 32) {
+    if (this->isActive()) {
+      if ((this->scroll_addr_5_14_ & 0x7000) == 0x7000) {
+        this->scroll_addr_5_14_ &= 0x0fff;
+        switch (this->scroll_addr_5_14_ & 0x03e0) {
+        case 0x03a0:
+          this->scroll_addr_5_14_ ^= 0x0800;
+          break;
+        case 0x03e0:
+          this->scroll_addr_5_14_ &= 0x7c00;
+          break;
+        default:
+          this->scroll_addr_5_14_ += 0x20;
+          break;
+        }
+      } else {
+        this->scroll_addr_5_14_ += 0x1000;
+      }
+    } else {
+      this->scroll_addr_5_14_ += 0x20;
+    }
+  } else if (this->scroll_addr_0_4_ < 0x1f) {
+    this->scroll_addr_0_4_ += 1;
+  } else {
+    this->scroll_addr_0_4_ = 0;
+    this->scroll_addr_5_14_ += 0x20;
+  }
+  this->update_scroll_address_line();
 }
 
 void PPU::Impl::update_scroll_address_line() {
@@ -783,7 +852,7 @@ address_t PPU::Impl::open_sprite(size_t buffer_idx) {
 
 void PPU::Impl::load_sprite(uint8_t pat0, uint8_t pat1, size_t buffer_idx) {
   auto byte2 = this->sp_buffer_.at(buffer_idx + 2);
-  auto pos = SP_PIXEL_POSITIONS[biti(
+  const auto &pos = SP_PIXEL_POSITIONS[biti(
       byte2, 6)]; // OAM byte2 bit6: "Flip horizontally" flag
   auto pat = (pat0 >> 1 & 0x55) | (pat1 & 0xaa) |
              (((pat0 & 0x55) | ((pat1 << 1) & 0xaa)) << 8);
@@ -1108,7 +1177,9 @@ void PPU::Impl::render_pixel() {
                                                         : 0);
     this->bg_pixels_.at(this->hclk_ % 8) = 0;
   }
-  this->output_pixels_.push_back(this->output_color_.at(pixel));
+  this->output_pixels_.at(this->output_pixels_index_) =
+      this->output_color_.at(pixel);
+  this->output_pixels_index_ += 1;
 }
 
 void PPU::Impl::boot() {
@@ -1156,7 +1227,8 @@ void PPU::Impl::update_enabled_flags_edge() {
 }
 
 void PPU::Impl::run() {
-  // debug_logging(@scanline, @hclk, @hclk_target) if @conf.loglevel >= 3
+  // std::cout << "[DEBUG] ppu: scanline " << this->scanline_ << ", hclk " <<
+  // this->hclk_ << "->" << this->hclk_target << std::endl;
   this->make_sure_invariants();
   {
     std::unique_lock<std::mutex> lk(this->mtx);
@@ -1165,7 +1237,7 @@ void PPU::Impl::run() {
              (this->thread_state == TS_WAITING_CLOCK);
     });
     this->thread_state = TS_READY;
-    this->cv.notify_one();
+    this->cv.notify_all();
     this->cv.wait(lk, [&] {
       return (this->thread_state == TS_WAITING_FRAME) ||
              (this->thread_state == TS_WAITING_CLOCK);
@@ -1179,7 +1251,7 @@ void PPU::Impl::run() {
 void PPU::Impl::wait_frame() {
   std::unique_lock<std::mutex> lk(this->mtx);
   this->thread_state = TS_WAITING_FRAME;
-  this->cv.notify_one();
+  this->cv.notify_all();
   this->cv.wait(lk, [&] { return this->thread_state == TS_READY; });
   this->thread_state = TS_RUNNING;
 }
@@ -1189,7 +1261,7 @@ void PPU::Impl::wait_zero_clocks() {
     return;
   }
   this->thread_state = TS_WAITING_CLOCK;
-  this->cv.notify_one();
+  this->cv.notify_all();
   this->cv.wait(lk, [&] { return this->thread_state == TS_READY; });
   this->thread_state = TS_RUNNING;
 }
@@ -1593,12 +1665,33 @@ void PPU::Impl::main_loop() {
 //==============================================================================
 //= Public API
 //==============================================================================
+std::shared_ptr<PPU> PPU::create(const std::shared_ptr<Config> &conf,
+                                 std::shared_ptr<CPU> cpu,
+                                 std::vector<uint32_t> *palette) {
+  struct impl : PPU {
+    impl(const std::shared_ptr<Config> &conf, std::shared_ptr<CPU> cpu,
+         std::vector<uint32_t> *palette)
+        : PPU(conf, std::move(cpu), palette) {}
+  };
+  auto self = std::make_shared<impl>(conf, cpu, palette);
+  cpu->setPPU(self);
+  return self;
+}
 PPU::PPU(const std::shared_ptr<Config> &conf, std::shared_ptr<CPU> cpu,
          std::vector<uint32_t> *palette)
-    : p_(std::make_unique<Impl>(std::move(cpu), palette, conf->SpriteLimit)) {}
+    : p_(std::make_unique<Impl>(cpu, palette, conf->SpriteLimit)) {}
 PPU::~PPU() = default;
 void PPU::reset() { this->p_->reset(); }
+void PPU::set_chr_mem(std::array<uint8_t, 0x2000> *mem, bool writable) {
+  this->p_->set_chr_mem(mem, writable);
+}
+void PPU::set_nametables(ROM::MirroringKind mode) {
+  this->p_->set_nametables(mode);
+}
 void PPU::update(size_t data_setup) { this->p_->update(data_setup); }
 void PPU::setup_frame() { this->p_->setup_frame(); }
 void PPU::vsync() { this->p_->vsync(); }
 void PPU::sync(size_t elapsed) { this->p_->sync(elapsed); }
+const std::array<uint32_t, 256 * 240> &PPU::output_pixels() {
+  return this->p_->output_pixels();
+}

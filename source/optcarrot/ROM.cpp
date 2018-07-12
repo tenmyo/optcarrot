@@ -7,6 +7,7 @@
 // Local/Private headers
 #include "optcarrot.h"
 #include "optcarrot/CPU.h"
+#include "optcarrot/PPU.h"
 
 // External headers
 
@@ -21,6 +22,7 @@
 #include <string>
 
 #include <iomanip>
+#include <utility>
 
 using namespace optcarrot;
 
@@ -66,22 +68,113 @@ static void file_write(const std::string &fname,
 
 class ROM::Impl {
 public:
-  explicit Impl(std::string basename)
-      : Basename(std::move(basename)), wrk(0x2000) {}
-  std::string Basename;
-  MirroringKind Mirroring{MirroringKind::kNone};
-  bool Battery{};
-  uint8_t Mapper{};
-  std::vector<std::array<uint8_t, 0x4000>> PrgBanks;
-  std::vector<std::array<uint8_t, 0x2000>> ChrBanks;
-  bool ChrRam{};
-  bool WrkReadable{};
-  bool WrkWritable{};
+  explicit Impl(const std::shared_ptr<Config> &conf,
+                const std::shared_ptr<PPU> &ppu, std::string basename,
+                const std::vector<uint8_t> &buf);
+
+  void reset(const std::shared_ptr<CPU> &cpu);
+  void load_battery();
+  void save_battery();
+
+private:
+  std::string basename_;
+  enum MirroringKind mirroring_ { MK_None };
+  bool battery_{};
+  uint8_t mapper_{};
+  std::vector<std::array<uint8_t, 0x4000>> prg_banks_;
+  std::vector<std::array<uint8_t, 0x2000>> chr_banks_;
+  bool chr_ram_{};
+  std::array<uint8_t, 0x2000> chr_ref_{};
+  bool wrk_readable_{};
+  bool wrk_writable_{};
   std::vector<uint8_t> wrk;
 
   void parseHeader(const std::vector<uint8_t> &buf, uint8_t *prg_banks,
                    uint8_t *chr_banks, uint8_t *ram_banks);
 };
+
+ROM::Impl::Impl(const std::shared_ptr<Config> & /*conf*/,
+                const std::shared_ptr<PPU> &ppu, std::string basename,
+                const std::vector<uint8_t> &buf)
+    : basename_(std::move(basename)) {
+  uint8_t prg_count;
+  uint8_t chr_count;
+  uint8_t wrk_count;
+  auto index = 0;
+
+  this->parseHeader(buf, &prg_count, &chr_count, &wrk_count);
+  index += 16;
+
+  if (buf.size() - static_cast<size_t>(index) < 0x4000 * prg_count) {
+    throw InvalidROM("EOF in ROM bank data");
+  }
+  this->prg_banks_.reserve(prg_count);
+  for (auto i = 0; i < prg_count; ++i) {
+    this->prg_banks_.emplace_back();
+    std::copy(buf.begin() + index, buf.begin() + index + 0x4000,
+              this->prg_banks_.back().begin());
+    index += 0x4000;
+  }
+
+  if (buf.size() - static_cast<size_t>(index) < 0x2000 * chr_count) {
+    throw InvalidROM("EOF in CHR bank data");
+  }
+  this->chr_banks_.reserve(chr_count);
+  for (auto i = 0; i < chr_count; ++i) {
+    this->chr_banks_.emplace_back();
+    std::copy(buf.begin() + index, buf.begin() + index + 0x2000,
+              this->chr_banks_.back().begin());
+    index += 0x2000;
+  }
+
+  this->chr_ram_ =
+      (chr_count == 0); // No CHR bank implies CHR-RAM (writable CHR bank)
+  if (this->chr_ram_) {
+    std::copy(this->chr_banks_[0].cbegin(), this->chr_banks_[0].cend(),
+              this->chr_ref_.begin());
+  }
+
+  this->wrk_readable_ = (wrk_count > 0);
+  this->wrk_writable_ = false;
+
+  ppu->set_nametables(this->mirroring_);
+  ppu->set_chr_mem(&this->chr_ref_, this->chr_ram_);
+}
+
+void ROM::Impl::reset(const std::shared_ptr<CPU> &cpu) {
+  cpu->add_mappings(0x8000, 0xbfff,
+                    [&](address_t addr) -> uint8_t {
+                      return this->prg_banks_.cbegin()->at(addr - 0x8000);
+                    },
+                    [&](address_t, uint8_t) {});
+  cpu->add_mappings(0xc000, 0xffff,
+                    [&](address_t addr) -> uint8_t {
+                      return (this->prg_banks_.cend() - 1)->at(addr - 0xc000);
+                    },
+                    [&](address_t, uint8_t) {});
+}
+
+void ROM::Impl::load_battery() {
+  if (!this->battery_) {
+    return;
+  }
+  auto p = this->basename_ + ".sav";
+  if (!std::filesystem::exists(p)) {
+    return;
+  }
+  this->wrk = file_read(p);
+}
+
+void ROM::Impl::save_battery() {
+  if (!this->battery_) {
+    return;
+  }
+  auto p = this->basename_ + ".sav";
+  if (!std::filesystem::exists(p)) {
+    return;
+  }
+  file_write(p, this->wrk);
+}
 
 void ROM::Impl::parseHeader(const std::vector<uint8_t> &buf, uint8_t *prg_banks,
                             uint8_t *chr_banks, uint8_t *ram_banks) {
@@ -102,103 +195,35 @@ void ROM::Impl::parseHeader(const std::vector<uint8_t> &buf, uint8_t *prg_banks,
     throw NotImplementedError("PAL not supported");
   }
 
-  this->Mirroring = ((buf[6] & (1 << 0)) != 0) ? MirroringKind::kHorizontal
-                                               : MirroringKind::kVertical;
+  this->mirroring_ = ((buf[6] & (1 << 0)) != 0) ? MK_Horizontal : MK_Vertical;
   if ((buf[6] & (1 << 3)) != 0) {
-    this->Mirroring = MirroringKind::kFourScreen;
+    this->mirroring_ = MK_FourScreen;
   }
-  this->Battery = ((buf[6] & (1 << 1)) != 0);
-  this->Mapper = (buf[6] >> 4) | (buf[7] & 0xf0);
+  this->battery_ = ((buf[6] & (1 << 1)) != 0);
+  this->mapper_ = (buf[6] >> 4) | (buf[7] & 0xf0);
   *prg_banks = buf[4];
   *chr_banks = buf[5];
   *ram_banks = std::max(static_cast<uint8_t>(1), buf[8]);
 }
 
-ROM::ROM(std::shared_ptr<Config> conf, std::string basename,
-         const std::vector<uint8_t> &buf)
-    : conf_(std::move(conf)), p_(std::make_unique<Impl>(basename)) {
-  uint8_t prg_count;
-  uint8_t chr_count;
-  uint8_t wrk_count;
-  auto index = 0;
-
-  this->p_->parseHeader(buf, &prg_count, &chr_count, &wrk_count);
-  index += 16;
-
-  if (buf.size() - static_cast<size_t>(index) < 0x4000 * prg_count) {
-    throw InvalidROM("EOF in ROM bank data");
-  }
-  this->p_->PrgBanks.reserve(prg_count);
-  for (auto i = 0; i < prg_count; ++i) {
-    this->p_->PrgBanks.emplace_back();
-    std::copy(buf.begin() + index, buf.begin() + index + 0x4000,
-              this->p_->PrgBanks.back().begin());
-    index += 0x4000;
-  }
-
-  if (buf.size() - static_cast<size_t>(index) < 0x2000 * chr_count) {
-    throw InvalidROM("EOF in CHR bank data");
-  }
-  this->p_->ChrBanks.reserve(chr_count);
-  for (auto i = 0; i < chr_count; ++i) {
-    this->p_->ChrBanks.emplace_back();
-    std::copy(buf.begin() + index, buf.begin() + index + 0x2000,
-              this->p_->ChrBanks.back().begin());
-    index += 0x2000;
-  }
-
-  this->p_->ChrRam =
-      (chr_count == 0); // No CHR bank implies CHR-RAM (writable CHR bank)
-  //@chr_ref = @chr_ram ? [0] * 0x2000 : @chr_banks[0].dup
-
-  this->p_->WrkReadable = (wrk_count > 0);
-  this->p_->WrkWritable = false;
-
-  /*
-  @ppu.nametables = @mirroring
-  @ppu.set_chr_mem(@chr_ref, @chr_ram)
-  */
-}
-
+//==============================================================================
+//= Public API
+//==============================================================================
+ROM::ROM(const std::shared_ptr<Config> &conf, const std::shared_ptr<PPU> &ppu,
+         std::string basename, const std::vector<uint8_t> &buf)
+    : p_(std::make_unique<Impl>(conf, ppu, std::move(basename), buf)) {}
 ROM::~ROM() = default;
+void ROM::reset(const std::shared_ptr<CPU> &cpu) { this->p_->reset(cpu); }
+void ROM::vsync() {}
+void ROM::load_battery() { this->p_->load_battery(); }
+void ROM::save_battery() { this->p_->save_battery(); }
 
-void ROM::reset(const std::shared_ptr<CPU> &cpu) {
-  cpu->add_mappings(0x8000, 0xbfff,
-                    [&](address_t addr) -> uint8_t {
-                      return this->p_->PrgBanks.cbegin()->at(addr - 0x8000);
-                    },
-                    [&](address_t, uint8_t) {});
-  cpu->add_mappings(0xc000, 0xffff,
-                    [&](address_t addr) -> uint8_t {
-                      return (this->p_->PrgBanks.cend() - 1)->at(addr - 0xc000);
-                    },
-                    [&](address_t, uint8_t) {});
-}
-
-void ROM::load_battery() {
-  if (!this->p_->Battery) {
-    return;
-  }
-  auto p = this->p_->Basename + ".sav";
-  if (!std::filesystem::exists(p)) {
-    return;
-  }
-  this->p_->wrk = file_read(p);
-}
-
-void ROM::save_battery() {
-  if (!this->p_->Battery) {
-    return;
-  }
-  auto p = this->p_->Basename + ".sav";
-  if (!std::filesystem::exists(p)) {
-    return;
-  }
-  file_write(p, this->p_->wrk);
-}
-
-std::unique_ptr<ROM> ROM::load(std::shared_ptr<Config> conf) {
-  // std::filesystem::path p("_ruby/examples/Lan_Master.nes");
-  std::filesystem::path p(",testdata/nestest.nes");
-  return std::make_unique<ROM>(std::move(conf), p.filename(), file_read(p));
+//==============================================================================
+//= Public API: static
+//==============================================================================
+std::unique_ptr<ROM> ROM::load(const std::shared_ptr<Config> &conf,
+                               const std::shared_ptr<PPU> &ppu) {
+  std::filesystem::path p("_ruby/examples/Lan_Master.nes");
+  // std::filesystem::path p(",testdata/nestest.nes");
+  return std::make_unique<ROM>(conf, ppu, p.filename(), file_read(p));
 }

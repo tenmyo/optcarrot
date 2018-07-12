@@ -979,11 +979,12 @@ size_t CPU::Impl::update() {
 void CPU::Impl::boot() {
   this->clk = CLK_7;
   this->_pc = this->peek16(RESET_VECTOR);
-  {
-    std::cerr << "Use boot address: 0xC000 instead " << std::setw(4) << std::hex
-              << this->_pc << std::endl;
-    this->_pc = 0xC000;
-  }
+  // {
+  //   std::cerr << "Use boot address: 0xC000 instead " << std::setw(4) <<
+  //   std::hex
+  //             << this->_pc << std::endl;
+  //   this->_pc = 0xC000;
+  // }
 }
 
 void CPU::Impl::vsync() {
@@ -1024,6 +1025,17 @@ void CPU::Impl::run() {
       // << "SP:" << std::setw(2) << +this->_sp << " "
       // << "CYC:" << std::setw(3) << std::dec << std::setfill(' ')
       // << std::right << (this->clk - CLK_7) / 4 % 341 << std::endl;
+
+      // std::cout << "[DEBUG] PC:";
+      // std::cout << std::uppercase << std::setfill('0') << std::hex;
+      // std::cout << std::setw(4) << this->_pc << " ";
+      // std::cout << "A:" << std::setw(2) << +this->_a << " "
+      //           << "X:" << std::setw(2) << +this->_x << " "
+      //           << "Y:" << std::setw(2) << +this->_y << " "
+      //           << "P:" << std::setw(2) << +this->flags_pack() << " "
+      //           << "SP:" << std::setw(2) << +this->_sp << " "
+      //           << "CYC:" << std::setw(3) << std::dec << std::setfill(' ')
+      //           << std::right << (this->clk) / 4 % 341 << std::endl;
 
       // if @conf.loglevel >= 3
       //   @conf.debug("PC:%04X A:%02X X:%02X Y:%02X P:%02X SP:%02X CYC:%3d :
