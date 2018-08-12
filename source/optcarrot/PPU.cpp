@@ -65,6 +65,7 @@ static constexpr uint8_t SP_PIXEL_POSITIONS[2][8] = {
 
 // A look - up table mapping : (two pattern bytes * attr)->eight pixels
 // TILE_LUT[attr][high_byte * 0x100 + low_byte] = [pixels] * 8
+#if 0
 static constexpr auto TILE_LUT = [] {
   std::array<std::array<std::array<uint8_t, 8>, 0x10000>, 4> ary{};
   uint8_t attrs[] = {0x0, 0x4, 0x8, 0xc};
@@ -79,6 +80,11 @@ static constexpr auto TILE_LUT = [] {
   }
   return ary;
 }();
+#endif
+static constexpr std::array<std::array<std::array<uint8_t, 8>, 0x10000>, 4>
+    TILE_LUT =
+#include "optcarrot/TILE_LUT.inc"
+    ;
 
 static constexpr std::array<std::array<uint8_t, 4>, ROM::MK_Num> NMT_TABLE = {{
     {{0, 0, 1, 1}}, // none
@@ -882,6 +888,12 @@ void PPU::Impl::load_sprite(uint8_t pat0, uint8_t pat1, size_t buffer_idx) {
 
 void PPU::Impl::update_address_line() {
   // TODO(tenmyo): PPU::Impl::update_address_line()
+  // if @a12_monitor
+  //   a12_state = @io_addr[12] == 1
+  //   @a12_monitor.a12_signaled((@vclk + @hclk) * RP2C02_CC) if !@a12_state &&
+  //   a12_state
+  //   @a12_state = a12_state
+  // end
 }
 
 // ###########################################################################
@@ -1226,9 +1238,25 @@ void PPU::Impl::update_enabled_flags_edge() {
   this->sp_active_ = this->sp_enabled_ && this->sp_visible_;
 }
 
+static void debug_logging(int32_t scanline, size_t hclk, size_t hclk_target) {
+  std::cout << "[DEBUG] ppu: scanline " << scanline << ", hclk ";
+  if (hclk == FOREVER_CLOCK) {
+    std::cout << "forever";
+  } else {
+    std::cout << hclk;
+  }
+  std::cout << "->";
+  if (hclk_target == FOREVER_CLOCK) {
+    std::cout << "forever";
+  } else {
+    std::cout << hclk_target;
+  }
+  std::cout << std::endl;
+}
+
 void PPU::Impl::run() {
-  // std::cout << "[DEBUG] ppu: scanline " << this->scanline_ << ", hclk " <<
-  // this->hclk_ << "->" << this->hclk_target << std::endl;
+  debug_logging(this->scanline_, this->hclk_, this->hclk_target_);
+
   this->make_sure_invariants();
   {
     std::unique_lock<std::mutex> lk(this->mtx);
