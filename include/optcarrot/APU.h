@@ -29,6 +29,9 @@ public:
   // other APIs
   size_t do_clock();
   void clock_dma(size_t clk);
+  void update();
+  void update_latency();
+  bool update_delta();
   void vsync();
   // poke_4017
 
