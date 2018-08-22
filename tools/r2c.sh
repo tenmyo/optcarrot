@@ -8,10 +8,14 @@ xsel -ob | sed -E \
   -e 's/when (.*) then (.*)/case \1: \2; break/' \
   -e 's/else (.*)/default: \1; break/' \
   -e '/^ *if/s/if (.*)$/if (\1) {/' \
-  -e '/^ *elsif/s/elsif (.*)$/} else if (\1) {/' \
-  -e '/^ *else/s/else/} else {/' \
   -e 's/([^ ].*) if (.*)$/if (\2) { \1; }/' \
   -e 's/([^ ].*) unless (.*)$/if (!(\2)) { \1; }/' \
+  -e '/^ *else/s/else/} else {/' \
+  -e '/^ *elsif/s/elsif (.*)$/} else if (\1) {/' \
+  -e '/^ *while/s/while (.*)$/while (\1) {/' \
+  -e 's/end while (.*)$/} while (\1);/' \
+  -e 's/([^ }].*) while (.*)$/while (\2) { \1; }/' \
+  -e '/^ *begin$/s/begin/do {/' \
   -e 's/end/}/' \
   -e '/[{}]/!s/([^ ])$/\1;/' \
 | xsel -ib

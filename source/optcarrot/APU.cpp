@@ -4,6 +4,7 @@
 // Main module header
 #include "optcarrot/APU.h"
 
+#include <cassert>
 #include <utility>
 
 // Local/Private headers
@@ -16,12 +17,19 @@
 
 using namespace optcarrot;
 
-static constexpr auto CLK_M2_MUL = 6;
+static constexpr auto CLK_M2_MUL = 6u;
 static constexpr auto CLK_NTSC = 39'375'000 * CLK_M2_MUL;
-static constexpr auto CLK_NTSC_DIV = 11;
+static constexpr auto CLK_NTSC_DIV = 11u;
 
 static constexpr auto CHANNEL_OUTPUT_MUL = 256;
 static constexpr auto CHANNEL_OUTPUT_DECAY = CHANNEL_OUTPUT_MUL / 4 - 1;
+
+static constexpr std::array<size_t, 4> FRAME_CLOCKS = {
+    RP2A03_CC * 29830, RP2A03_CC * 1, RP2A03_CC * 1, RP2A03_CC * 29828};
+static constexpr std::array<std::array<size_t, 4>, 2> OSCILLATOR_CLOCKS = {
+    {{{RP2A03_CC * 7458, RP2A03_CC * 7456, RP2A03_CC * 7458, RP2A03_CC * 7458}},
+     {{RP2A03_CC * 7458, RP2A03_CC * 7456, RP2A03_CC * 7458,
+       RP2A03_CC * 7458 + 7452}}}};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////;
 // helper classes;
@@ -221,7 +229,7 @@ protected:
     return true;
   }
 
-  virtual void update_freq() = 0;
+  virtual void update_freq() {}
 
 protected:
   APU &apu_;
@@ -573,8 +581,8 @@ private:
 
 /// DMC channel
 class DMC {
-private:
-  static constexpr std::array<uint16_t, 16> LUT = {
+public:
+  static constexpr std::array<size_t, 16> LUT = {
       428 * RP2A03_CC, 380 * RP2A03_CC, 340 * RP2A03_CC, 320 * RP2A03_CC,
       286 * RP2A03_CC, 254 * RP2A03_CC, 226 * RP2A03_CC, 214 * RP2A03_CC,
       190 * RP2A03_CC, 160 * RP2A03_CC, 142 * RP2A03_CC, 128 * RP2A03_CC,
@@ -721,24 +729,25 @@ private:
   uint8_t dma_buffer_{};
 };
 
-/// Mixer (with DC Blocking filter);
+/// Mixer (with DC Blocking filter)
 class Mixer {
 private:
   static constexpr auto VOL = 192;
   static constexpr auto P_F = 900;
-  static constexpr auto P_0 = 9552 * CHANNEL_OUTPUT_MUL * VOL * (P_F / 100);
+  static constexpr auto P_0 = 9552L * CHANNEL_OUTPUT_MUL * VOL * (P_F / 100);
   static constexpr auto P_1 = 8128 * CHANNEL_OUTPUT_MUL * P_F;
   static constexpr auto P_2 = P_F * 100;
   static constexpr auto TND_F = 500;
   static constexpr auto TND_0 =
-      16367 * CHANNEL_OUTPUT_MUL * VOL * (TND_F / 100);
-  static constexpr auto TND_1 = 24329 * CHANNEL_OUTPUT_MUL * TND_F;
+      16367L * CHANNEL_OUTPUT_MUL * VOL * (TND_F / 100);
+  static constexpr auto TND_1 = 24329L * CHANNEL_OUTPUT_MUL * TND_F;
   static constexpr auto TND_2 = TND_F * 100;
 
 public:
-  explicit Mixer(pulse_0, pulse_1, triangle, noise, dmc)
-      : pulse_0_{pulse_0}, pulse_1_{pulse_1}, triangle_{triangle},
-        noise_{noise}, dmc_{dmc} {}
+  explicit Mixer(Pulse &pulse_0, Pulse &pulse_1, Triangle &triangle,
+                 Noise &noise, DMC &dmc)
+      : pulse_0_(pulse_0), pulse_1_(pulse_1), triangle_(triangle),
+        noise_(noise), dmc_(dmc) {}
   ~Mixer() noexcept = default;
   // disallow copy
   Mixer(const Mixer &) = delete;
@@ -753,16 +762,17 @@ public:
     this->next_ = 0;
   }
 
-  void sample() {
-    dac0 = this->pulse_0_.sample + this->pulse_1_.sample;
-    dac1 = this->triangle_.sample + this->noise_.sample + this->dmc_.sample;
-    sample = (P_0 * dac0 / (P_1 + P_2 * dac0)) +
-             (TND_0 * dac1 / (TND_1 + TND_2 * dac1));
+  uint16_t sample() {
+    int32_t dac0 = this->pulse_0_.sample() + this->pulse_1_.sample();
+    int32_t dac1 =
+        this->triangle_.sample() + this->noise_.sample() + this->dmc_.sample();
+    int32_t sample = (P_0 * dac0 / (P_1 + P_2 * dac0)) +
+                     (TND_0 * dac1 / (TND_1 + TND_2 * dac1));
 
     this->acc_ -= this->prev_;
     this->prev_ = sample << 15;
-    this->acc_ += this->prev_ - this->next_ * 3 // POLE;
-                                sample = this->next_ = this->acc_ >> 15;
+    this->acc_ += this->prev_ - this->next_ * 3; // POLE;
+    sample = this->next_ = this->acc_ >> 15;
 
     if (sample < -0x7fff) {
       sample = -0x7fff;
@@ -770,15 +780,24 @@ public:
     if (sample > 0x7fff) {
       sample = 0x7fff;
     }
-    sample;
+    return static_cast<uint16_t>(sample);
   }
 
 private:
+  Pulse &pulse_0_;
+  Pulse &pulse_1_;
+  Triangle &triangle_;
+  Noise &noise_;
+  DMC &dmc_;
+  int32_t acc_{};
+  int32_t prev_{};
+  int32_t next_{};
 };
 
 class APU::Impl {
 public:
-  explicit Impl(std::shared_ptr<CPU> cpu);
+  explicit Impl(APU &apu, std::shared_ptr<CPU> cpu, uint16_t rate,
+                uint16_t bits);
   // initialization
   void reset(bool mapping = true);
   // other APIs
@@ -786,7 +805,7 @@ public:
   void clock_dma(size_t clk);
   void update(size_t target);
   void update() { this->update(this->cpu_->update()); }
-  void update_latency();
+  void update_latency() { this->update(this->cpu_->update() + 1); }
   bool update_delta();
   void vsync();
 
@@ -794,82 +813,313 @@ private:
   // initialization
   void reset_mapping();
   // helpers
-  // void clock_oscillators(two_clocks);
+  void clock_oscillators(bool two_clocks);
   void clock_dmc(size_t target);
-  // void clock_frame_counter();
-  // void clock_frame_irq(size_t target);
-  // void flush_sound();
-  // void proceed(target);
-  // mapped memory handlers
-  // poke_4015(_addr, data)
-  // peek_4015(_addr)
-  // poke_4017(_addr, data)
-  // peek_40xx(_addr)
+  void clock_frame_counter();
+  void clock_frame_irq(size_t target);
+  void flush_sound();
+  void proceed(size_t target);
 
 private:
   std::shared_ptr<CPU> cpu_;
-  uint8_t frame_divider{};
-  size_t frame_irq_clock{};
-  size_t frame_irq_repeat{};
-  size_t dmc_clock{};
-  size_t frame_counter{};
-  DMC dmc;
+  Pulse pulse_0_;
+  Pulse pulse_1_;
+  Triangle triangle_;
+  Noise noise_;
+  DMC dmc_;
+  Mixer mixer_;
+  uint16_t settings_rate_;
+  std::vector<uint16_t> output_{};
+  std::vector<uint16_t> buffer_{};
+  size_t fixed_clock_{1};
+  size_t rate_clock_{1};
+  size_t rate_counter_{0};
+  size_t frame_counter_{0};
+  uint8_t frame_divider_{0};
+  size_t frame_irq_clock_{0};
+  size_t frame_irq_repeat_{0};
+  size_t dmc_clock_{0};
+  const std::array<size_t, 4> *oscillator_clocks_;
 };
 
-APU::Impl::Impl(std::shared_ptr<CPU> cpu) : cpu_(std::move(cpu)) {
-  // TODO(tenmyo): APU::Impl::Impl()
+APU::Impl::Impl(APU &apu, std::shared_ptr<CPU> cpu, uint16_t rate,
+                uint16_t bits)
+    : cpu_(std::move(cpu)), pulse_0_(apu), pulse_1_(apu), triangle_(apu),
+      noise_(apu), dmc_(cpu_, apu),
+      mixer_(pulse_0_, pulse_1_, triangle_, noise_, dmc_), settings_rate_{
+                                                               rate} {
+  assert(rate >= 10050);
+  assert(bit(bits, 8) || bit(bits, 16));
+
+  this->output_.reserve(rate);
+  this->buffer_.reserve(rate);
+
+  reset(false);
 }
 
 void APU::Impl::reset(bool mapping) {
-  // TODO(tenmyo): APU::Impl::reset
-  this->frame_divider = 0;
-  this->frame_irq_clock = FOREVER_CLOCK;
-  this->frame_irq_repeat = 0;
-  this->dmc_clock = DMC::LUT[0];
-  // this->frame_counter = FRAME_CLOCKS[0] * @fixed_clock
+  this->frame_divider_ = 0;
+  this->frame_irq_clock_ = FOREVER_CLOCK;
+  this->frame_irq_repeat_ = 0;
+  this->dmc_clock_ = DMC::LUT[0];
+  this->frame_counter_ = FRAME_CLOCKS[0] * this->fixed_clock_;
 
   if (mapping) {
     this->reset_mapping();
   }
 
-  // @pulse_0.reset
-  // @pulse_1.reset
-  // @triangle.reset
-  // @noise.reset
-  // @dmc.reset
-  // @mixer.reset
-  // @buffer.clear
-  // @oscillator_clocks = OSCILLATOR_CLOCKS[0]
+  this->pulse_0_.reset();
+  this->pulse_1_.reset();
+  this->triangle_.reset();
+  this->noise_.reset();
+  this->dmc_.reset();
+  this->mixer_.reset();
+  this->buffer_.clear();
+  this->oscillator_clocks_ = &OSCILLATOR_CLOCKS.at(0);
 }
 
 size_t APU::Impl::do_clock() {
-  // TODO(tenmyo): APU::Impl::do_clock
   this->clock_dma(this->cpu_->current_clock());
-  // clock_frame_irq(@cpu.current_clock) if @frame_irq_clock <=
-  // @cpu.current_clock
-  // @dmc_clock < @frame_irq_clock ? @dmc_clock : @frame_irq_clock
-  return 0;
+  if (this->frame_irq_clock_ <= this->cpu_->current_clock()) {
+    this->clock_frame_irq(this->cpu_->current_clock());
+  }
+  return (this->dmc_clock_ < this->frame_irq_clock_) ? this->dmc_clock_
+                                                     : this->frame_irq_clock_;
 }
 
 void APU::Impl::clock_dma(size_t clk) {
-  if (this->dmc_clock <= clk) {
+  if (this->dmc_clock_ <= clk) {
     this->clock_dmc(clk);
   }
 }
 
+void APU::Impl::update(size_t target) {
+  target *= this->fixed_clock_;
+  this->proceed(target);
+  if (this->frame_counter_ < target) {
+    this->clock_frame_counter();
+  }
+}
+
+bool APU::Impl::update_delta() {
+  auto elapsed = this->cpu_->update();
+  auto delta = this->frame_counter_ != elapsed * this->fixed_clock_;
+  this->update(elapsed + 1);
+  return delta;
+}
+
+void APU::Impl::vsync() {
+  this->flush_sound();
+  this->update(this->cpu_->current_clock());
+  auto frame = this->cpu_->next_frame_clock();
+  this->dmc_clock_ -= frame;
+  if (this->frame_irq_clock_ != FOREVER_CLOCK) {
+    this->frame_irq_clock_ -= frame;
+  }
+  frame *= this->fixed_clock_;
+  this->rate_counter_ -= frame;
+  this->frame_counter_ -= frame;
+}
+
 void APU::Impl::reset_mapping() {
-  // TODO(tenmyo): APU::Impl::reset_mapping
+  this->frame_counter_ /= this->fixed_clock_;
+  this->rate_counter_ /= this->fixed_clock_;
+  auto multiplier = 0u;
+  while (true) {
+    multiplier += 1;
+    if (multiplier >= 512) {
+      break;
+    }
+    if (CLK_NTSC * multiplier % this->settings_rate_ == 0) {
+      break;
+    }
+  }
+  this->rate_clock_ = CLK_NTSC * multiplier / this->settings_rate_;
+  this->fixed_clock_ = CLK_NTSC_DIV * multiplier;
+  this->frame_counter_ *= this->fixed_clock_;
+  this->rate_counter_ *= this->fixed_clock_;
+
+  this->mixer_.reset();
+  this->buffer_.clear();
+
+  multiplier = 0;
+  while (true) {
+    multiplier += 1;
+    if (multiplier >= 0x1000) {
+      break;
+    }
+    if (CLK_NTSC * (multiplier + 1) / this->settings_rate_ > 0x7ffff) {
+      break;
+    }
+    if (CLK_NTSC * multiplier % this->settings_rate_ == 0) {
+      break;
+    }
+  }
+  auto rate =
+      static_cast<uint16_t>(CLK_NTSC * multiplier / this->settings_rate_);
+  auto fixed = static_cast<uint16_t>(CLK_NTSC_DIV * CPU::CLK_1 * multiplier);
+
+  this->pulse_0_.update_settings(rate, fixed);
+  this->pulse_1_.update_settings(rate, fixed);
+  this->triangle_.update_settings(rate, fixed);
+  this->noise_.update_settings(rate, fixed);
+
+  auto peek_40xx = [](address_t /*addr*/) -> uint8_t { return 0x40; };
+
+  this->cpu_->add_mappings(
+      0x4000, 0x4000, peek_40xx,
+      [&](address_t addr, uint8_t data) { this->pulse_0_.poke_0(addr, data); });
+  this->cpu_->add_mappings(
+      0x4001, 0x4001, peek_40xx,
+      [&](address_t addr, uint8_t data) { this->pulse_0_.poke_1(addr, data); });
+  this->cpu_->add_mappings(
+      0x4002, 0x4002, peek_40xx,
+      [&](address_t addr, uint8_t data) { this->pulse_0_.poke_2(addr, data); });
+  this->cpu_->add_mappings(
+      0x4003, 0x4003, peek_40xx,
+      [&](address_t addr, uint8_t data) { this->pulse_0_.poke_3(addr, data); });
+  this->cpu_->add_mappings(
+      0x4004, 0x4004, peek_40xx,
+      [&](address_t addr, uint8_t data) { this->pulse_1_.poke_0(addr, data); });
+  this->cpu_->add_mappings(
+      0x4005, 0x4005, peek_40xx,
+      [&](address_t addr, uint8_t data) { this->pulse_1_.poke_1(addr, data); });
+  this->cpu_->add_mappings(
+      0x4006, 0x4006, peek_40xx,
+      [&](address_t addr, uint8_t data) { this->pulse_1_.poke_2(addr, data); });
+  this->cpu_->add_mappings(
+      0x4007, 0x4007, peek_40xx,
+      [&](address_t addr, uint8_t data) { this->pulse_1_.poke_3(addr, data); });
+  this->cpu_->add_mappings(0x4008, 0x4008, peek_40xx,
+                           [&](address_t addr, uint8_t data) {
+                             this->triangle_.poke_0(addr, data);
+                           });
+  // 0x4009
+  this->cpu_->add_mappings(0x400a, 0x400a, peek_40xx,
+                           [&](address_t addr, uint8_t data) {
+                             this->triangle_.poke_2(addr, data);
+                           });
+  this->cpu_->add_mappings(0x400b, 0x400b, peek_40xx,
+                           [&](address_t addr, uint8_t data) {
+                             this->triangle_.poke_3(addr, data);
+                           });
+  this->cpu_->add_mappings(
+      0x400c, 0x400c, peek_40xx,
+      [&](address_t addr, uint8_t data) { this->noise_.poke_0(addr, data); });
+  // 0x400d
+  this->cpu_->add_mappings(
+      0x400e, 0x400e, peek_40xx,
+      [&](address_t addr, uint8_t data) { this->noise_.poke_2(addr, data); });
+  this->cpu_->add_mappings(
+      0x400f, 0x400f, peek_40xx,
+      [&](address_t addr, uint8_t data) { this->noise_.poke_3(addr, data); });
+  this->cpu_->add_mappings(
+      0x4010, 0x4010, peek_40xx,
+      [&](address_t addr, uint8_t data) { this->dmc_.poke_0(addr, data); });
+  this->cpu_->add_mappings(
+      0x4011, 0x4011, peek_40xx,
+      [&](address_t addr, uint8_t data) { this->dmc_.poke_1(addr, data); });
+  this->cpu_->add_mappings(
+      0x4012, 0x4012, peek_40xx,
+      [&](address_t addr, uint8_t data) { this->dmc_.poke_2(addr, data); });
+  this->cpu_->add_mappings(
+      0x4013, 0x4013, peek_40xx,
+      [&](address_t addr, uint8_t data) { this->dmc_.poke_3(addr, data); });
+  // 0x4014
+  this->cpu_->add_mappings(0x4015, 0x4015,
+                           [this](address_t /*addr*/) -> uint8_t {
+                             auto elapsed = this->cpu_->update();
+                             if (this->frame_irq_clock_ <= elapsed) {
+                               clock_frame_irq(elapsed);
+                             }
+                             if (this->frame_counter_ <
+                                 elapsed * this->fixed_clock_) {
+                               update(elapsed);
+                             }
+                             return this->cpu_->clear_irq(CPU::IRQ_FRAME) |
+                                    (this->pulse_0_.status() ? 0x01 : 0) |
+                                    (this->pulse_1_.status() ? 0x02 : 0) |
+                                    (this->triangle_.status() ? 0x04 : 0) |
+                                    (this->noise_.status() ? 0x08 : 0) |
+                                    (this->dmc_.status() ? 0x10 : 0);
+                           },
+                           [this](address_t /*addr*/, uint8_t data) {
+                             this->update();
+                             this->pulse_0_.enable(bit(data, 0));
+                             this->pulse_1_.enable(bit(data, 1));
+                             this->triangle_.enable(bit(data, 2));
+                             this->noise_.enable(bit(data, 3));
+                             this->dmc_.enable(bit(data, 4));
+                           });
+  this->frame_irq_clock_ =
+      (this->frame_counter_ / this->fixed_clock_) - CPU::CLK_1;
+}
+
+void APU::Impl::clock_oscillators(bool two_clocks) {
+  this->pulse_0_.clock_envelope();
+  this->pulse_1_.clock_envelope();
+  this->triangle_.clock_linear_counter();
+  this->noise_.clock_envelope();
+  if (!(two_clocks)) {
+    return;
+  }
+  this->pulse_0_.clock_sweep(-1);
+  this->pulse_1_.clock_sweep(0);
+  this->triangle_.clock_length_counter();
+  this->noise_.clock_length_counter();
 }
 
 void APU::Impl::clock_dmc(size_t target) {
-  // TODO(tenmyo): APU::Impl::clock_dmc
-  while (this->dmc_clock <= target) {
-    // if @dmc.clock_dac
-    //   update(@dmc_clock)
-    //   @dmc.update
-    // end
-    this->dmc_clock += this->dmc.freq;
-    // @dmc.clock_dma
+  do {
+    if (this->dmc_.clock_dac()) {
+      update(this->dmc_clock_);
+      this->dmc_.update();
+    }
+    this->dmc_clock_ += this->dmc_.freq();
+    this->dmc_.clock_dma();
+  } while (this->dmc_clock_ <= target);
+}
+
+void APU::Impl::clock_frame_counter() {
+  this->clock_oscillators(bit(this->frame_divider_, 0));
+  this->frame_divider_ = (this->frame_divider_ + 1) & 3;
+  this->frame_counter_ +=
+      this->oscillator_clocks_->at(this->frame_divider_) * this->fixed_clock_;
+}
+
+void APU::Impl::clock_frame_irq(size_t target) {
+  this->cpu_->do_irq(CPU::IRQ_FRAME, this->frame_irq_clock_);
+  do {
+    this->frame_irq_clock_ += FRAME_CLOCKS[1 + this->frame_irq_repeat_ % 3];
+    this->frame_irq_repeat_ += 1;
+  } while (this->frame_irq_clock_ <= target);
+}
+
+void APU::Impl::flush_sound() {
+  if (this->buffer_.size() < this->settings_rate_ / 60) {
+    auto target = this->cpu_->current_clock() * this->fixed_clock_;
+    this->proceed(target);
+    if (this->buffer_.size() < this->settings_rate_ / 60) {
+      if (this->frame_counter_ < target) {
+        this->clock_frame_counter();
+      }
+      while (this->buffer_.size() < this->settings_rate_ / 60) {
+        this->buffer_.push_back(this->mixer_.sample());
+      }
+    }
+  }
+  this->output_.swap(this->buffer_);
+  this->buffer_.clear();
+}
+
+void APU::Impl::proceed(size_t target) {
+  while (this->rate_counter_ < target &&
+         this->buffer_.size() < this->settings_rate_ / 60) {
+    this->buffer_.push_back(this->mixer_.sample());
+    if (this->frame_counter_ <= this->rate_counter_) {
+      this->clock_frame_counter();
+    }
+    this->rate_counter_ += this->rate_clock_;
   }
 }
 
@@ -877,17 +1127,20 @@ void APU::Impl::clock_dmc(size_t target) {
 //= Public API
 //==============================================================================
 std::shared_ptr<APU> APU::create(const std::shared_ptr<Config> &conf,
-                                 std::shared_ptr<CPU> cpu) {
+                                 std::shared_ptr<CPU> cpu, uint16_t rate,
+                                 uint16_t bits) {
   struct impl : APU {
-    impl(const std::shared_ptr<Config> &conf, std::shared_ptr<CPU> cpu)
-        : APU(conf, std::move(cpu)) {}
+    explicit impl(const std::shared_ptr<Config> &conf, std::shared_ptr<CPU> cpu,
+                  uint16_t rate, uint16_t bits)
+        : APU(std::move(conf), std::move(cpu), rate, bits) {}
   };
-  auto self = std::make_shared<impl>(conf, cpu);
+  auto self = std::make_shared<impl>(conf, cpu, rate, bits);
   cpu->setAPU(self);
   return self;
 }
-APU::APU(const std::shared_ptr<Config> &conf, std::shared_ptr<CPU> cpu)
-    : p_(std::make_unique<Impl>(conf, std::move(cpu))) {}
+APU::APU(const std::shared_ptr<Config> & /*conf*/, std::shared_ptr<CPU> cpu,
+         uint16_t rate, uint16_t bits)
+    : p_(std::make_unique<Impl>(*this, std::move(cpu), rate, bits)) {}
 APU::~APU() = default;
 
 void APU::reset() { this->p_->reset(); }

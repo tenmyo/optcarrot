@@ -31,31 +31,33 @@ public:
   add_mappings(address_t begin, address_t end,
                const std::function<uint8_t(address_t addr)> &peek,
                const std::function<void(address_t addr, uint8_t data)> &poke);
-  uint8_t fetch(address_t addr_) { return this->fetch_.at(addr_)(addr_); }
+  uint8_t fetch(address_t addr) { return this->fetch_.at(addr)(addr); }
   // other APIs
-  void steal_clocks(size_t clk_);
+  void steal_clocks(size_t clk);
   bool odd_clock();
   size_t update();
-  // dmc_dma
-  void sprite_dma(address_t addr_, std::array<uint8_t, 0x100> *sp_ram);
+  uint8_t dmc_dma(address_t addr);
+  void sprite_dma(address_t addr, std::array<uint8_t, 0x100> *sp_ram);
   void boot();
   void vsync();
   // interrupts
-  void do_nmi(size_t clk_);
+  uint8_t clear_irq(uint8_t line);
+  void do_irq(uint8_t line, size_t clk);
+  void do_nmi(size_t clk);
   // default core
   void run();
 
 private:
   // mapped memory API
-  void store(address_t addr_, uint8_t data_) {
-    return this->store_.at(addr_)(addr_, data_);
+  void store(address_t addr, uint8_t data) {
+    return this->store_.at(addr)(addr, data);
   }
-  uint16_t peek16(address_t addr_) {
-    return this->fetch(addr_) +
-           static_cast<uint16_t>(this->fetch(addr_ + 1) << 8);
+  uint16_t peek16(address_t addr) {
+    return this->fetch(addr) +
+           static_cast<uint16_t>(this->fetch(addr + 1) << 8);
   }
   // interrupts
-  size_t next_interrupt_clock(size_t clk_);
+  size_t next_interrupt_clock(size_t clk);
   void do_isr(address_t vector);
   address_t fetch_irq_isr_vector();
   // instruction helpers
@@ -63,47 +65,47 @@ private:
   uint8_t flags_pack() {
     // NVssDIZC
     return static_cast<uint8_t>(
-        ((this->_p_nz | this->_p_nz >> 1) & 0x80) | // N: Negative
-        ((this->_p_nz & 0xff) != 0 ? 0 : 2) |       // Z: Zero
-        this->_p_c |                                // C: Carry
-        (this->_p_v != 0 ? 0x40 : 0) |              // V: Overflow
-        this->_p_i |                                // I: Inerrupt
-        this->_p_d |                                // D: Decimal
+        ((this->_p_nz_ | this->_p_nz_ >> 1) & 0x80) | // N: Negative
+        ((this->_p_nz_ & 0xff) != 0 ? 0 : 2) |        // Z: Zero
+        this->_p_c_ |                                 // C: Carry
+        (this->_p_v_ != 0 ? 0x40 : 0) |               // V: Overflow
+        this->_p_i_ |                                 // I: Inerrupt
+        this->_p_d_ |                                 // D: Decimal
         0x20);
   }
   void flags_unpack(uint8_t f) {
-    this->_p_nz = static_cast<uint16_t>((~f & 2) | ((f & 0x80) << 1));
-    this->_p_c = f & 0x01;
-    this->_p_v = f & 0x40;
-    this->_p_i = f & 0x04;
-    this->_p_d = f & 0x08;
+    this->_p_nz_ = static_cast<uint16_t>((~f & 2) | ((f & 0x80) << 1));
+    this->_p_c_ = f & 0x01;
+    this->_p_v_ = f & 0x40;
+    this->_p_i_ = f & 0x04;
+    this->_p_d_ = f & 0x08;
   }
   // branch helper
   void branch(bool cond) {
     if (cond) {
-      auto tmp = this->_pc + 1;
-      auto rel = this->fetch(this->_pc);
-      this->_pc = (tmp + (rel < 128 ? rel : rel | 0xff00)) & 0xffff;
-      this->clk +=
-          (((tmp >> 8) & 0x01) == ((this->_pc >> 8) & 0x01)) ? CLK_3 : CLK_4;
+      auto tmp = this->_pc_ + 1;
+      auto rel = this->fetch(this->_pc_);
+      this->_pc_ = (tmp + (rel < 128 ? rel : rel | 0xff00)) & 0xffff;
+      this->clk_ +=
+          (((tmp >> 8) & 0x01) == ((this->_pc_ >> 8) & 0x01)) ? CLK_3 : CLK_4;
     } else {
-      this->_pc += 1;
-      this->clk += CLK_2;
+      this->_pc_ += 1;
+      this->clk_ += CLK_2;
     }
   }
   // storers
   // stack management
-  void push8(uint8_t data_) {
-    this->ram.at(0x0100 + this->_sp) = data_;
-    this->_sp--;
+  void push8(uint8_t data) {
+    this->ram_.at(0x0100 + this->_sp_) = data;
+    this->_sp_--;
   }
-  void push16(uint16_t data_) {
-    this->push8(data_ >> 8);
-    this->push8(data_ & 0xff);
+  void push16(uint16_t data) {
+    this->push8(data >> 8);
+    this->push8(data & 0xff);
   }
   uint8_t pull8() {
-    this->_sp++;
-    return this->ram.at(0x0100 + this->_sp);
+    this->_sp_++;
+    return this->ram_.at(0x0100 + this->_sp_);
   }
   uint16_t pull16() {
     uint16_t lo = this->pull8();
@@ -120,40 +122,40 @@ public:
   std::array<std::function<uint8_t(address_t addr)>, 0x10000> fetch_{};
   std::array<std::function<void(address_t addr, uint8_t data)>, 0x10000>
       store_{};
-  std::array<uint8_t, 0x800> ram{};
+  std::array<uint8_t, 0x800> ram_{};
   // # clock management
   /// the current clock
-  size_t clk{};
+  size_t clk_{};
   /// the next frame clock
-  size_t clk_frame{};
+  size_t clk_frame_{};
   /// the goal clock for the current CPU#run
-  size_t clk_target{};
+  size_t clk_target_{};
   /// the next NMI clock (FOREVER_CLOCK means "not scheduled")
-  size_t clk_nmi{FOREVER_CLOCK};
+  size_t clk_nmi_{FOREVER_CLOCK};
   /// the next IRQ clock
-  size_t clk_irq{FOREVER_CLOCK};
+  size_t clk_irq_{FOREVER_CLOCK};
   /// the total elapsed clocks
-  size_t clk_total{};
+  size_t clk_total_{};
   // #interrupt
-  uint8_t irq_flags{};
-  bool jammed{};
+  uint8_t irq_flags_{};
+  bool jammed_{};
   // # registers
-  uint8_t _a{};
-  uint8_t _x{};
-  uint8_t _y{};
-  uint8_t _sp{};
-  address_t _pc{};
+  uint8_t _a_{};
+  uint8_t _x_{};
+  uint8_t _y_{};
+  uint8_t _sp_{};
+  address_t _pc_{};
   // # register
-  uint16_t _p_nz{};
-  uint8_t _p_c{};
-  uint8_t _p_v{};
-  uint8_t _p_i{};
-  uint8_t _p_d{};
+  uint16_t _p_nz_{};
+  uint8_t _p_c_{};
+  uint8_t _p_v_{};
+  uint8_t _p_i_{};
+  uint8_t _p_d_{};
   //
-  address_t addr{};
-  uint8_t data{};
-  uint8_t opcode{};
-  bool ppu_sync{};
+  address_t addr_{};
+  uint8_t data_{};
+  uint8_t opcode_{};
+  bool ppu_sync_{};
 
 private:
   // ### storers ###
@@ -280,106 +282,108 @@ private:
 };
 
 void CPU::Impl::store_mem(CPU::Impl &cpu) {
-  cpu.store(cpu.addr, cpu.data);
-  cpu.clk += CLK_1;
+  cpu.store(cpu.addr_, cpu.data_);
+  cpu.clk_ += CLK_1;
 }
 
-void CPU::Impl::store_zpg(CPU::Impl &cpu) { cpu.ram.at(cpu.addr) = cpu.data; }
+void CPU::Impl::store_zpg(CPU::Impl &cpu) {
+  cpu.ram_.at(cpu.addr_) = cpu.data_;
+}
 
 void CPU::Impl::am_imm(CPU::Impl &cpu, bool /*read*/, bool /*write*/) {
-  cpu.data = cpu.fetch(cpu._pc);
-  cpu._pc += 1;
-  cpu.clk += CLK_2;
+  cpu.data_ = cpu.fetch(cpu._pc_);
+  cpu._pc_ += 1;
+  cpu.clk_ += CLK_2;
 }
 void CPU::Impl::am_zpg(CPU::Impl &cpu, bool read, bool write) {
-  cpu.addr = cpu.fetch(cpu._pc);
-  cpu._pc += 1;
-  cpu.clk += CLK_3;
+  cpu.addr_ = cpu.fetch(cpu._pc_);
+  cpu._pc_ += 1;
+  cpu.clk_ += CLK_3;
   if (read) {
-    cpu.data = cpu.ram.at(cpu.addr);
+    cpu.data_ = cpu.ram_.at(cpu.addr_);
     if (write) {
-      cpu.clk += CLK_2;
+      cpu.clk_ += CLK_2;
     }
   }
 }
 void CPU::Impl::am_zpg_reg(CPU::Impl &cpu, uint8_t indexed, bool read,
                            bool write) {
-  cpu.addr = (indexed + cpu.fetch(cpu._pc)) & 0xff;
-  cpu._pc += 1;
-  cpu.clk += CLK_4;
+  cpu.addr_ = (indexed + cpu.fetch(cpu._pc_)) & 0xff;
+  cpu._pc_ += 1;
+  cpu.clk_ += CLK_4;
   if (read) {
-    cpu.data = cpu.ram.at(cpu.addr);
+    cpu.data_ = cpu.ram_.at(cpu.addr_);
     if (write) {
-      cpu.clk += CLK_2;
+      cpu.clk_ += CLK_2;
     }
   }
 }
 void CPU::Impl::am_zpg_x(CPU::Impl &cpu, bool read, bool write) {
-  am_zpg_reg(cpu, cpu._x, read, write);
+  am_zpg_reg(cpu, cpu._x_, read, write);
 }
 void CPU::Impl::am_zpg_y(CPU::Impl &cpu, bool read, bool write) {
-  am_zpg_reg(cpu, cpu._y, read, write);
+  am_zpg_reg(cpu, cpu._y_, read, write);
 }
 void CPU::Impl::am_abs(CPU::Impl &cpu, bool read, bool write) {
-  cpu.addr = cpu.peek16(cpu._pc);
-  cpu._pc += 2;
-  cpu.clk += CLK_3;
+  cpu.addr_ = cpu.peek16(cpu._pc_);
+  cpu._pc_ += 2;
+  cpu.clk_ += CLK_3;
   am_read_write(cpu, read, write);
 }
 void CPU::Impl::am_abs_reg(CPU::Impl &cpu, uint8_t indexed, bool read,
                            bool write) {
-  address_t addr = cpu._pc + 1;
-  auto i = indexed + cpu.fetch(cpu._pc);
-  cpu.addr = ((cpu.fetch(addr) << 8) + i) & 0xffff;
+  address_t addr = cpu._pc_ + 1;
+  auto i = indexed + cpu.fetch(cpu._pc_);
+  cpu.addr_ = ((cpu.fetch(addr) << 8) + i) & 0xffff;
   if (write) {
-    addr = (cpu.addr - (i & 0x100)) & 0xffff;
+    addr = (cpu.addr_ - (i & 0x100)) & 0xffff;
     cpu.fetch(addr);
-    cpu.clk += CLK_4;
+    cpu.clk_ += CLK_4;
   } else {
-    cpu.clk += CLK_3;
+    cpu.clk_ += CLK_3;
     if ((i & 0x100) != 0) {
-      addr = (cpu.addr - 0x100) & 0xffff; // for inlining fetch
+      addr = (cpu.addr_ - 0x100) & 0xffff; // for inlining fetch
       cpu.fetch(addr);
-      cpu.clk += CLK_1;
+      cpu.clk_ += CLK_1;
     }
   }
 
   am_read_write(cpu, read, write);
-  cpu._pc += 2;
+  cpu._pc_ += 2;
 }
 void CPU::Impl::am_abs_x(CPU::Impl &cpu, bool read, bool write) {
-  am_abs_reg(cpu, cpu._x, read, write);
+  am_abs_reg(cpu, cpu._x_, read, write);
 }
 void CPU::Impl::am_abs_y(CPU::Impl &cpu, bool read, bool write) {
-  am_abs_reg(cpu, cpu._y, read, write);
+  am_abs_reg(cpu, cpu._y_, read, write);
 }
 void CPU::Impl::am_ind_x(CPU::Impl &cpu, bool read, bool write) {
-  address_t addr = cpu.fetch(cpu._pc) + cpu._x;
-  cpu._pc += 1;
-  cpu.clk += CLK_5;
-  cpu.addr = static_cast<address_t>(cpu.ram.at(addr & 0xff) |
-                                    cpu.ram.at((addr + 1) & 0xff) << 8);
+  address_t addr = cpu.fetch(cpu._pc_) + cpu._x_;
+  cpu._pc_ += 1;
+  cpu.clk_ += CLK_5;
+  cpu.addr_ = static_cast<address_t>(cpu.ram_.at(addr & 0xff) |
+                                     cpu.ram_.at((addr + 1) & 0xff) << 8);
   am_read_write(cpu, read, write);
 }
 void CPU::Impl::am_ind_y(CPU::Impl &cpu, bool read, bool write) {
-  address_t addr = cpu.fetch(cpu._pc);
-  cpu._pc += 1;
-  auto indexed = cpu.ram.at(addr) + cpu._y;
-  cpu.clk += CLK_4;
+  address_t addr = cpu.fetch(cpu._pc_);
+  cpu._pc_ += 1;
+  auto indexed = cpu.ram_.at(addr) + cpu._y_;
+  cpu.clk_ += CLK_4;
   if (write) {
-    cpu.clk += CLK_1;
-    cpu.addr =
-        static_cast<address_t>((cpu.ram.at((addr + 1) & 0xff) << 8) + indexed);
-    addr = static_cast<address_t>(cpu.addr -
+    cpu.clk_ += CLK_1;
+    cpu.addr_ =
+        static_cast<address_t>((cpu.ram_.at((addr + 1) & 0xff) << 8) + indexed);
+    addr = static_cast<address_t>(cpu.addr_ -
                                   (indexed & 0x100)); // for inlining fetch
     cpu.fetch(addr);
   } else {
-    cpu.addr = ((cpu.ram.at((addr + 1) & 0xff) << 8) + indexed) & 0xffff;
+    cpu.addr_ = ((cpu.ram_.at((addr + 1) & 0xff) << 8) + indexed) & 0xffff;
     if ((indexed & 0x100) != 0) {
-      addr = static_cast<address_t>((cpu.addr - 0x100) &
+      addr = static_cast<address_t>((cpu.addr_ - 0x100) &
                                     0xffff); // for inlining fetch;
       cpu.fetch(addr);
-      cpu.clk += CLK_1;
+      cpu.clk_ += CLK_1;
     }
   }
 
@@ -387,330 +391,331 @@ void CPU::Impl::am_ind_y(CPU::Impl &cpu, bool read, bool write) {
 }
 void CPU::Impl::am_read_write(CPU::Impl &cpu, bool read, bool write) {
   if (read) {
-    cpu.data = cpu.fetch(cpu.addr);
-    cpu.clk += CLK_1;
+    cpu.data_ = cpu.fetch(cpu.addr_);
+    cpu.clk_ += CLK_1;
     if (write) {
-      cpu.store(cpu.addr, cpu.data);
-      cpu.clk += CLK_1;
+      cpu.store(cpu.addr_, cpu.data_);
+      cpu.clk_ += CLK_1;
     }
   }
 }
 
-void CPU::Impl::_lda(CPU::Impl &cpu) { cpu._p_nz = cpu._a = cpu.data; }
-void CPU::Impl::_ldx(CPU::Impl &cpu) { cpu._p_nz = cpu._x = cpu.data; }
-void CPU::Impl::_ldy(CPU::Impl &cpu) { cpu._p_nz = cpu._y = cpu.data; }
-void CPU::Impl::_sta(CPU::Impl &cpu) { cpu.data = cpu._a; }
-void CPU::Impl::_stx(CPU::Impl &cpu) { cpu.data = cpu._x; }
-void CPU::Impl::_sty(CPU::Impl &cpu) { cpu.data = cpu._y; }
+void CPU::Impl::_lda(CPU::Impl &cpu) { cpu._p_nz_ = cpu._a_ = cpu.data_; }
+void CPU::Impl::_ldx(CPU::Impl &cpu) { cpu._p_nz_ = cpu._x_ = cpu.data_; }
+void CPU::Impl::_ldy(CPU::Impl &cpu) { cpu._p_nz_ = cpu._y_ = cpu.data_; }
+void CPU::Impl::_sta(CPU::Impl &cpu) { cpu.data_ = cpu._a_; }
+void CPU::Impl::_stx(CPU::Impl &cpu) { cpu.data_ = cpu._x_; }
+void CPU::Impl::_sty(CPU::Impl &cpu) { cpu.data_ = cpu._y_; }
 void CPU::Impl::_tax(CPU::Impl &cpu) {
-  ;
-  cpu.clk += CLK_2;
-  cpu._p_nz = cpu._x = cpu._a;
+  cpu.clk_ += CLK_2;
+  cpu._p_nz_ = cpu._x_ = cpu._a_;
 }
 void CPU::Impl::_tay(CPU::Impl &cpu) {
-  ;
-  cpu.clk += CLK_2;
-  cpu._p_nz = cpu._y = cpu._a;
+  cpu.clk_ += CLK_2;
+  cpu._p_nz_ = cpu._y_ = cpu._a_;
 }
 void CPU::Impl::_txa(CPU::Impl &cpu) {
-  ;
-  cpu.clk += CLK_2;
-  cpu._p_nz = cpu._a = cpu._x;
+  cpu.clk_ += CLK_2;
+  cpu._p_nz_ = cpu._a_ = cpu._x_;
 }
 void CPU::Impl::_tya(CPU::Impl &cpu) {
-  ;
-  cpu.clk += CLK_2;
-  cpu._p_nz = cpu._a = cpu._y;
+  cpu.clk_ += CLK_2;
+  cpu._p_nz_ = cpu._a_ = cpu._y_;
 }
 void CPU::Impl::_jmp_a(CPU::Impl &cpu) {
-  cpu._pc = cpu.peek16(cpu._pc);
-  cpu.clk += CLK_3;
+  cpu._pc_ = cpu.peek16(cpu._pc_);
+  cpu.clk_ += CLK_3;
 }
 void CPU::Impl::_jmp_i(CPU::Impl &cpu) {
-  auto pos = cpu.peek16(cpu._pc);
+  auto pos = cpu.peek16(cpu._pc_);
   auto low = cpu.fetch(pos);
   pos = (pos & 0xff00) | ((pos + 1) & 0x00ff);
   auto high = cpu.fetch(pos);
-  cpu._pc = high * 256 + low;
-  cpu.clk += CLK_5;
+  cpu._pc_ = high * 256 + low;
+  cpu.clk_ += CLK_5;
 }
 void CPU::Impl::_jsr(CPU::Impl &cpu) {
-  uint16_t data = cpu._pc + 1;
+  uint16_t data = cpu._pc_ + 1;
   cpu.push16(data);
-  cpu._pc = cpu.peek16(cpu._pc);
-  cpu.clk += CLK_6;
+  cpu._pc_ = cpu.peek16(cpu._pc_);
+  cpu.clk_ += CLK_6;
 }
 void CPU::Impl::_rts(CPU::Impl &cpu) {
-  cpu._pc = (cpu.pull16() + 1) & 0xffff;
-  cpu.clk += CLK_6;
+  cpu._pc_ = (cpu.pull16() + 1) & 0xffff;
+  cpu.clk_ += CLK_6;
 }
 void CPU::Impl::_rti(CPU::Impl &cpu) {
-  cpu.clk += CLK_6;
+  cpu.clk_ += CLK_6;
   auto packed = cpu.pull8();
-  cpu._pc = cpu.pull16();
+  cpu._pc_ = cpu.pull16();
   cpu.flags_unpack(packed);
-  cpu.clk_irq =
-      cpu.irq_flags == 0 || cpu._p_i != 0 ? FOREVER_CLOCK : cpu.clk_target = 0;
+  cpu.clk_irq_ = cpu.irq_flags_ == 0 || cpu._p_i_ != 0 ? FOREVER_CLOCK
+                                                       : cpu.clk_target_ = 0;
 }
-void CPU::Impl::_bne(CPU::Impl &cpu) { cpu.branch((cpu._p_nz & 0xff) != 0); }
-void CPU::Impl::_beq(CPU::Impl &cpu) { cpu.branch((cpu._p_nz & 0xff) == 0); }
-void CPU::Impl::_bmi(CPU::Impl &cpu) { cpu.branch((cpu._p_nz & 0x180) != 0); }
-void CPU::Impl::_bpl(CPU::Impl &cpu) { cpu.branch((cpu._p_nz & 0x180) == 0); }
-void CPU::Impl::_bcs(CPU::Impl &cpu) { cpu.branch(cpu._p_c != 0); }
-void CPU::Impl::_bcc(CPU::Impl &cpu) { cpu.branch(cpu._p_c == 0); }
-void CPU::Impl::_bvs(CPU::Impl &cpu) { cpu.branch(cpu._p_v != 0); }
-void CPU::Impl::_bvc(CPU::Impl &cpu) { cpu.branch(cpu._p_v == 0); }
+void CPU::Impl::_bne(CPU::Impl &cpu) { cpu.branch((cpu._p_nz_ & 0xff) != 0); }
+void CPU::Impl::_beq(CPU::Impl &cpu) { cpu.branch((cpu._p_nz_ & 0xff) == 0); }
+void CPU::Impl::_bmi(CPU::Impl &cpu) { cpu.branch((cpu._p_nz_ & 0x180) != 0); }
+void CPU::Impl::_bpl(CPU::Impl &cpu) { cpu.branch((cpu._p_nz_ & 0x180) == 0); }
+void CPU::Impl::_bcs(CPU::Impl &cpu) { cpu.branch(cpu._p_c_ != 0); }
+void CPU::Impl::_bcc(CPU::Impl &cpu) { cpu.branch(cpu._p_c_ == 0); }
+void CPU::Impl::_bvs(CPU::Impl &cpu) { cpu.branch(cpu._p_v_ != 0); }
+void CPU::Impl::_bvc(CPU::Impl &cpu) { cpu.branch(cpu._p_v_ == 0); }
 void CPU::Impl::_adc(CPU::Impl &cpu) {
-  auto tmp = cpu._a + cpu.data + cpu._p_c;
-  cpu._p_v = ~(cpu._a ^ cpu.data) & (cpu._a ^ tmp) & 0x80;
-  cpu._p_nz = cpu._a = tmp & 0xff;
-  cpu._p_c = (tmp >> 8) & 0x01;
+  auto tmp = cpu._a_ + cpu.data_ + cpu._p_c_;
+  cpu._p_v_ = ~(cpu._a_ ^ cpu.data_) & (cpu._a_ ^ tmp) & 0x80;
+  cpu._p_nz_ = cpu._a_ = tmp & 0xff;
+  cpu._p_c_ = (tmp >> 8) & 0x01;
 }
 void CPU::Impl::_sbc(CPU::Impl &cpu) {
-  auto data = cpu.data ^ 0xff;
-  auto tmp = cpu._a + data + cpu._p_c;
-  cpu._p_v = ~(cpu._a ^ data) & (cpu._a ^ tmp) & 0x80;
-  cpu._p_nz = cpu._a = tmp & 0xff;
-  cpu._p_c = (tmp >> 8) & 0x01;
+  auto data = cpu.data_ ^ 0xff;
+  auto tmp = cpu._a_ + data + cpu._p_c_;
+  cpu._p_v_ = ~(cpu._a_ ^ data) & (cpu._a_ ^ tmp) & 0x80;
+  cpu._p_nz_ = cpu._a_ = tmp & 0xff;
+  cpu._p_c_ = (tmp >> 8) & 0x01;
 }
-void CPU::Impl::_and(CPU::Impl &cpu) { cpu._p_nz = cpu._a &= cpu.data; }
-void CPU::Impl::_ora(CPU::Impl &cpu) { cpu._p_nz = cpu._a |= cpu.data; }
-void CPU::Impl::_eor(CPU::Impl &cpu) { cpu._p_nz = cpu._a ^= cpu.data; }
+void CPU::Impl::_and(CPU::Impl &cpu) { cpu._p_nz_ = cpu._a_ &= cpu.data_; }
+void CPU::Impl::_ora(CPU::Impl &cpu) { cpu._p_nz_ = cpu._a_ |= cpu.data_; }
+void CPU::Impl::_eor(CPU::Impl &cpu) { cpu._p_nz_ = cpu._a_ ^= cpu.data_; }
 void CPU::Impl::_bit(CPU::Impl &cpu) {
-  cpu._p_nz = static_cast<uint16_t>(((cpu.data & cpu._a) != 0 ? 1 : 0) |
-                                    ((cpu.data & 0x80) << 1));
-  cpu._p_v = cpu.data & 0x40;
+  cpu._p_nz_ = static_cast<uint16_t>(((cpu.data_ & cpu._a_) != 0 ? 1 : 0) |
+                                     ((cpu.data_ & 0x80) << 1));
+  cpu._p_v_ = cpu.data_ & 0x40;
 }
 void CPU::Impl::_cmp(CPU::Impl &cpu) {
-  auto data = cpu._a - cpu.data;
-  cpu._p_nz = data & 0xff;
-  cpu._p_c = 1 - ((data >> 8) & 0x01);
+  auto data = cpu._a_ - cpu.data_;
+  cpu._p_nz_ = data & 0xff;
+  cpu._p_c_ = 1 - ((data >> 8) & 0x01);
 }
 void CPU::Impl::_cpx(CPU::Impl &cpu) {
-  auto data = cpu._x - cpu.data;
-  cpu._p_nz = data & 0xff;
-  cpu._p_c = 1 - ((data >> 8) & 0x01);
+  auto data = cpu._x_ - cpu.data_;
+  cpu._p_nz_ = data & 0xff;
+  cpu._p_c_ = 1 - ((data >> 8) & 0x01);
 }
 void CPU::Impl::_cpy(CPU::Impl &cpu) {
-  auto data = cpu._y - cpu.data;
-  cpu._p_nz = data & 0xff;
-  cpu._p_c = 1 - ((data >> 8) & 0x01);
+  auto data = cpu._y_ - cpu.data_;
+  cpu._p_nz_ = data & 0xff;
+  cpu._p_c_ = 1 - ((data >> 8) & 0x01);
 }
 void CPU::Impl::_asl(CPU::Impl &cpu) {
-  cpu._p_c = cpu.data >> 7;
-  cpu.data = cpu._p_nz = cpu.data << 1 & 0xff;
+  cpu._p_c_ = cpu.data_ >> 7;
+  cpu.data_ = cpu._p_nz_ = cpu.data_ << 1 & 0xff;
 }
 void CPU::Impl::_lsr(CPU::Impl &cpu) {
-  cpu._p_c = cpu.data & 1;
-  cpu.data = cpu._p_nz = cpu.data >> 1;
+  cpu._p_c_ = cpu.data_ & 1;
+  cpu.data_ = cpu._p_nz_ = cpu.data_ >> 1;
 }
 void CPU::Impl::_rol(CPU::Impl &cpu) {
-  cpu._p_nz = (cpu.data << 1 & 0xff) | cpu._p_c;
-  cpu._p_c = cpu.data >> 7;
-  cpu.data = static_cast<uint8_t>(cpu._p_nz);
+  cpu._p_nz_ = (cpu.data_ << 1 & 0xff) | cpu._p_c_;
+  cpu._p_c_ = cpu.data_ >> 7;
+  cpu.data_ = static_cast<uint8_t>(cpu._p_nz_);
 }
 void CPU::Impl::_ror(CPU::Impl &cpu) {
-  cpu._p_nz = static_cast<uint16_t>((cpu.data >> 1) | (cpu._p_c << 7));
-  cpu._p_c = cpu.data & 1;
-  cpu.data = static_cast<uint8_t>(cpu._p_nz);
+  cpu._p_nz_ = static_cast<uint16_t>((cpu.data_ >> 1) | (cpu._p_c_ << 7));
+  cpu._p_c_ = cpu.data_ & 1;
+  cpu.data_ = static_cast<uint8_t>(cpu._p_nz_);
 }
 void CPU::Impl::_dec(CPU::Impl &cpu) {
-  cpu.data = cpu._p_nz = (cpu.data - 1) & 0xff;
+  cpu.data_ = cpu._p_nz_ = (cpu.data_ - 1) & 0xff;
 }
 void CPU::Impl::_inc(CPU::Impl &cpu) {
-  cpu.data = cpu._p_nz = (cpu.data + 1) & 0xff;
+  cpu.data_ = cpu._p_nz_ = (cpu.data_ + 1) & 0xff;
 }
 void CPU::Impl::_dex(CPU::Impl &cpu) {
-  cpu.clk += CLK_2;
-  cpu.data = cpu._p_nz = cpu._x = (cpu._x - 1) & 0xff;
+  cpu.clk_ += CLK_2;
+  cpu.data_ = cpu._p_nz_ = cpu._x_ = (cpu._x_ - 1) & 0xff;
 }
 void CPU::Impl::_dey(CPU::Impl &cpu) {
-  cpu.clk += CLK_2;
-  cpu.data = cpu._p_nz = cpu._y = (cpu._y - 1) & 0xff;
+  cpu.clk_ += CLK_2;
+  cpu.data_ = cpu._p_nz_ = cpu._y_ = (cpu._y_ - 1) & 0xff;
 }
 void CPU::Impl::_inx(CPU::Impl &cpu) {
-  cpu.clk += CLK_2;
-  cpu.data = cpu._p_nz = cpu._x = (cpu._x + 1) & 0xff;
+  cpu.clk_ += CLK_2;
+  cpu.data_ = cpu._p_nz_ = cpu._x_ = (cpu._x_ + 1) & 0xff;
 }
 void CPU::Impl::_iny(CPU::Impl &cpu) {
-  cpu.clk += CLK_2;
-  cpu.data = cpu._p_nz = cpu._y = (cpu._y + 1) & 0xff;
+  cpu.clk_ += CLK_2;
+  cpu.data_ = cpu._p_nz_ = cpu._y_ = (cpu._y_ + 1) & 0xff;
 }
 void CPU::Impl::_clc(CPU::Impl &cpu) {
-  cpu.clk += CLK_2;
-  cpu._p_c = 0;
+  cpu.clk_ += CLK_2;
+  cpu._p_c_ = 0;
 }
 void CPU::Impl::_sec(CPU::Impl &cpu) {
-  cpu.clk += CLK_2;
-  cpu._p_c = 1;
+  cpu.clk_ += CLK_2;
+  cpu._p_c_ = 1;
 }
 void CPU::Impl::_cld(CPU::Impl &cpu) {
-  cpu.clk += CLK_2;
-  cpu._p_d = 0;
+  cpu.clk_ += CLK_2;
+  cpu._p_d_ = 0;
 }
 void CPU::Impl::_sed(CPU::Impl &cpu) {
-  cpu.clk += CLK_2;
-  cpu._p_d = 8;
+  cpu.clk_ += CLK_2;
+  cpu._p_d_ = 8;
 }
 void CPU::Impl::_clv(CPU::Impl &cpu) {
-  cpu.clk += CLK_2;
-  cpu._p_v = 0;
+  cpu.clk_ += CLK_2;
+  cpu._p_v_ = 0;
 }
 void CPU::Impl::_sei(CPU::Impl &cpu) {
-  cpu.clk += CLK_2;
-  if (cpu._p_i == 0) {
-    cpu._p_i = 0x04;
-    cpu.clk_irq = FOREVER_CLOCK;
-    if (cpu.irq_flags != 0) {
+  cpu.clk_ += CLK_2;
+  if (cpu._p_i_ == 0) {
+    cpu._p_i_ = 0x04;
+    cpu.clk_irq_ = FOREVER_CLOCK;
+    if (cpu.irq_flags_ != 0) {
       cpu.do_isr(IRQ_VECTOR);
     }
   }
 }
 void CPU::Impl::_cli(CPU::Impl &cpu) {
-  cpu.clk += CLK_2;
-  if (cpu._p_i != 0) {
-    cpu._p_i = 0;
-    if (cpu.irq_flags != 0) {
-      auto clk = cpu.clk_irq = cpu.clk + 1;
-      if (cpu.clk_target > clk) {
-        cpu.clk_target = clk;
+  cpu.clk_ += CLK_2;
+  if (cpu._p_i_ != 0) {
+    cpu._p_i_ = 0;
+    if (cpu.irq_flags_ != 0) {
+      auto clk = cpu.clk_irq_ = cpu.clk_ + 1;
+      if (cpu.clk_target_ > clk) {
+        cpu.clk_target_ = clk;
       }
     }
   }
 }
 void CPU::Impl::_pha(CPU::Impl &cpu) {
-  cpu.clk += CLK_3;
-  cpu.push8(cpu._a);
+  cpu.clk_ += CLK_3;
+  cpu.push8(cpu._a_);
 }
 void CPU::Impl::_php(CPU::Impl &cpu) {
-  cpu.clk += CLK_3;
+  cpu.clk_ += CLK_3;
   uint8_t data = cpu.flags_pack() | 0x10;
   cpu.push8(data);
 }
 void CPU::Impl::_pla(CPU::Impl &cpu) {
-  cpu.clk += CLK_4;
-  cpu._p_nz = cpu._a = cpu.pull8();
+  cpu.clk_ += CLK_4;
+  cpu._p_nz_ = cpu._a_ = cpu.pull8();
 }
 void CPU::Impl::_plp(CPU::Impl &cpu) {
-  cpu.clk += CLK_4;
-  auto i = cpu._p_i;
+  cpu.clk_ += CLK_4;
+  auto i = cpu._p_i_;
   cpu.flags_unpack(cpu.pull8());
-  if (cpu.irq_flags != 0) {
-    if (i > cpu._p_i) {
-      auto clk = cpu.clk_irq = cpu.clk + 1;
-      if (cpu.clk_target > clk) {
-        cpu.clk_target = clk;
+  if (cpu.irq_flags_ != 0) {
+    if (i > cpu._p_i_) {
+      auto clk = cpu.clk_irq_ = cpu.clk_ + 1;
+      if (cpu.clk_target_ > clk) {
+        cpu.clk_target_ = clk;
       }
-    } else if (i < cpu._p_i) {
-      cpu.clk_irq = FOREVER_CLOCK;
+    } else if (i < cpu._p_i_) {
+      cpu.clk_irq_ = FOREVER_CLOCK;
       cpu.do_isr(IRQ_VECTOR);
     }
   }
 }
 void CPU::Impl::_tsx(CPU::Impl &cpu) {
-  cpu.clk += CLK_2;
-  cpu._p_nz = cpu._x = cpu._sp;
+  cpu.clk_ += CLK_2;
+  cpu._p_nz_ = cpu._x_ = cpu._sp_;
 }
 void CPU::Impl::_txs(CPU::Impl &cpu) {
-  cpu.clk += CLK_2;
-  cpu._sp = cpu._x;
+  cpu.clk_ += CLK_2;
+  cpu._sp_ = cpu._x_;
 }
 void CPU::Impl::_anc(CPU::Impl &cpu) {
-  cpu._p_nz = cpu._a &= cpu.data;
-  cpu._p_c = static_cast<uint8_t>(cpu._p_nz >> 7);
+  cpu._p_nz_ = cpu._a_ &= cpu.data_;
+  cpu._p_c_ = static_cast<uint8_t>(cpu._p_nz_ >> 7);
 }
 void CPU::Impl::_ane(CPU::Impl &cpu) {
-  cpu._a = (cpu._a | 0xee) & cpu._x & cpu.data;
-  cpu._p_nz = cpu._a;
+  cpu._a_ = (cpu._a_ | 0xee) & cpu._x_ & cpu.data_;
+  cpu._p_nz_ = cpu._a_;
 }
 void CPU::Impl::_arr(CPU::Impl &cpu) {
-  cpu._a = static_cast<uint8_t>(((cpu.data & cpu._a) >> 1) | (cpu._p_c << 7));
-  cpu._p_nz = cpu._a;
-  cpu._p_c = ((cpu._a >> 6) & 0x01);
-  cpu._p_v = ((cpu._a >> 6) & 0x01) ^ ((cpu._a >> 5) & 0x01);
+  cpu._a_ =
+      static_cast<uint8_t>(((cpu.data_ & cpu._a_) >> 1) | (cpu._p_c_ << 7));
+  cpu._p_nz_ = cpu._a_;
+  cpu._p_c_ = ((cpu._a_ >> 6) & 0x01);
+  cpu._p_v_ = ((cpu._a_ >> 6) & 0x01) ^ ((cpu._a_ >> 5) & 0x01);
 }
 void CPU::Impl::_asr(CPU::Impl &cpu) {
-  cpu._p_c = cpu.data & cpu._a & 0x1;
-  cpu._p_nz = cpu._a = (cpu.data & cpu._a) >> 1;
+  cpu._p_c_ = cpu.data_ & cpu._a_ & 0x1;
+  cpu._p_nz_ = cpu._a_ = (cpu.data_ & cpu._a_) >> 1;
 }
 void CPU::Impl::_dcp(CPU::Impl &cpu) {
-  cpu.data = (cpu.data - 1) & 0xff;
+  cpu.data_ = (cpu.data_ - 1) & 0xff;
   _cmp(cpu);
 }
 void CPU::Impl::_isb(CPU::Impl &cpu) {
-  cpu.data = (cpu.data + 1) & 0xff;
+  cpu.data_ = (cpu.data_ + 1) & 0xff;
   _sbc(cpu);
 }
 void CPU::Impl::_las(CPU::Impl &cpu) {
-  cpu._sp &= cpu.data;
-  cpu._p_nz = cpu._a = cpu._x = cpu._sp;
+  cpu._sp_ &= cpu.data_;
+  cpu._p_nz_ = cpu._a_ = cpu._x_ = cpu._sp_;
 }
-void CPU::Impl::_lax(CPU::Impl &cpu) { cpu._p_nz = cpu._a = cpu._x = cpu.data; }
-void CPU::Impl::_lxa(CPU::Impl &cpu) { cpu._p_nz = cpu._a = cpu._x = cpu.data; }
+void CPU::Impl::_lax(CPU::Impl &cpu) {
+  cpu._p_nz_ = cpu._a_ = cpu._x_ = cpu.data_;
+}
+void CPU::Impl::_lxa(CPU::Impl &cpu) {
+  cpu._p_nz_ = cpu._a_ = cpu._x_ = cpu.data_;
+}
 void CPU::Impl::_rla(CPU::Impl &cpu) {
-  auto c = cpu._p_c;
-  cpu._p_c = cpu.data >> 7;
-  cpu.data = (cpu.data << 1 & 0xff) | c;
-  cpu._p_nz = cpu._a &= cpu.data;
+  auto c = cpu._p_c_;
+  cpu._p_c_ = cpu.data_ >> 7;
+  cpu.data_ = (cpu.data_ << 1 & 0xff) | c;
+  cpu._p_nz_ = cpu._a_ &= cpu.data_;
 }
 void CPU::Impl::_rra(CPU::Impl &cpu) {
-  auto c = cpu._p_c << 7;
-  cpu._p_c = cpu.data & 1;
-  cpu.data = static_cast<uint8_t>((cpu.data >> 1) | c);
+  auto c = cpu._p_c_ << 7;
+  cpu._p_c_ = cpu.data_ & 1;
+  cpu.data_ = static_cast<uint8_t>((cpu.data_ >> 1) | c);
   _adc(cpu);
 }
-void CPU::Impl::_sax(CPU::Impl &cpu) { cpu.data = cpu._a & cpu._x; }
+void CPU::Impl::_sax(CPU::Impl &cpu) { cpu.data_ = cpu._a_ & cpu._x_; }
 void CPU::Impl::_sbx(CPU::Impl &cpu) {
-  cpu.data = (cpu._a & cpu._x) - cpu.data;
-  cpu._p_c = (cpu.data & 0xffff) <= 0xff ? 1 : 0;
-  cpu._p_nz = cpu._x = cpu.data & 0xff;
+  cpu.data_ = (cpu._a_ & cpu._x_) - cpu.data_;
+  cpu._p_c_ = (cpu.data_ & 0xffff) <= 0xff ? 1 : 0;
+  cpu._p_nz_ = cpu._x_ = cpu.data_ & 0xff;
 }
 void CPU::Impl::_sha(CPU::Impl &cpu) {
-  cpu.data = cpu._a & cpu._x & ((cpu.addr >> 8) + 1);
+  cpu.data_ = cpu._a_ & cpu._x_ & ((cpu.addr_ >> 8) + 1);
 }
 void CPU::Impl::_shs(CPU::Impl &cpu) {
-  cpu._sp = cpu._a & cpu._x;
-  cpu.data = cpu._sp & ((cpu.addr >> 8) + 1);
+  cpu._sp_ = cpu._a_ & cpu._x_;
+  cpu.data_ = cpu._sp_ & ((cpu.addr_ >> 8) + 1);
 }
 void CPU::Impl::_shx(CPU::Impl &cpu) {
-  cpu.data = cpu._x & ((cpu.addr >> 8) + 1);
-  cpu.addr = static_cast<address_t>((cpu.data << 8) | (cpu.addr & 0xff));
+  cpu.data_ = cpu._x_ & ((cpu.addr_ >> 8) + 1);
+  cpu.addr_ = static_cast<address_t>((cpu.data_ << 8) | (cpu.addr_ & 0xff));
 }
 void CPU::Impl::_shy(CPU::Impl &cpu) {
-  cpu.data = cpu._y & ((cpu.addr >> 8) + 1);
-  cpu.addr = static_cast<address_t>((cpu.data << 8) | (cpu.addr & 0xff));
+  cpu.data_ = cpu._y_ & ((cpu.addr_ >> 8) + 1);
+  cpu.addr_ = static_cast<address_t>((cpu.data_ << 8) | (cpu.addr_ & 0xff));
 }
 void CPU::Impl::_slo(CPU::Impl &cpu) {
-  cpu._p_c = cpu.data >> 7;
-  cpu.data = cpu.data << 1 & 0xff;
-  cpu._p_nz = cpu._a |= cpu.data;
+  cpu._p_c_ = cpu.data_ >> 7;
+  cpu.data_ = cpu.data_ << 1 & 0xff;
+  cpu._p_nz_ = cpu._a_ |= cpu.data_;
 }
 void CPU::Impl::_sre(CPU::Impl &cpu) {
-  cpu._p_c = cpu.data & 1;
-  cpu.data >>= 1;
-  cpu._p_nz = cpu._a ^= cpu.data;
+  cpu._p_c_ = cpu.data_ & 1;
+  cpu.data_ >>= 1;
+  cpu._p_nz_ = cpu._a_ ^= cpu.data_;
 }
 void CPU::Impl::_nop(CPU::Impl & /*cpu*/) {}
 void CPU::Impl::_brk(CPU::Impl &cpu) {
-  uint16_t data = cpu._pc + 1;
+  uint16_t data = cpu._pc_ + 1;
   cpu.push16(data);
   uint8_t data2 = cpu.flags_pack() | 0x10;
   cpu.push8(data2);
-  cpu._p_i = 0x04;
-  cpu.clk_irq = FOREVER_CLOCK;
-  cpu.clk += CLK_7;
+  cpu._p_i_ = 0x04;
+  cpu.clk_irq_ = FOREVER_CLOCK;
+  cpu.clk_ += CLK_7;
   auto addr = cpu.fetch_irq_isr_vector(); // for inlining peek16
-  cpu._pc = cpu.peek16(addr);
+  cpu._pc_ = cpu.peek16(addr);
 }
 void CPU::Impl::_jam(CPU::Impl &cpu) {
-  cpu._pc = (cpu._pc - 1) & 0xffff;
-  cpu.clk += CLK_2;
-  if (!cpu.jammed) {
-    cpu.jammed = true;
+  cpu._pc_ = (cpu._pc_ - 1) & 0xffff;
+  cpu.clk_ += CLK_2;
+  if (!cpu.jammed_) {
+    cpu.jammed_ = true;
     // interrupt reset
-    cpu.clk_nmi = FOREVER_CLOCK;
-    cpu.clk_irq = FOREVER_CLOCK;
-    cpu.irq_flags = 0;
+    cpu.clk_nmi_ = FOREVER_CLOCK;
+    cpu.clk_irq_ = FOREVER_CLOCK;
+    cpu.irq_flags_ = 0;
   }
 }
 
@@ -737,16 +742,16 @@ const std::array<std::function<void(CPU::Impl &)>, 0x100> CPU::Impl::DISPATCH =
       std::array<std::function<void(CPU::Impl &)>, 0x100> ary{};
       auto op2 = [&](std::vector<uint8_t> opcodes,
                      std::function<void(CPU::Impl &)> func) {
-        for (const auto &opcode_ : opcodes) {
-          ary.at(opcode_) = func;
+        for (const auto &opcode__ : opcodes) {
+          ary.at(opcode__) = func;
         }
       };
       auto op_r = [&](std::vector<uint8_t> opcodes,
                       std::function<void(CPU::Impl &)> op,
                       enum ADDRESSING_MODE modenum) {
-        for (const auto &opcode_ : opcodes) {
-          auto mode = ADDRESSING_MODES[modenum][opcode_ >> 2 & 7];
-          ary.at(opcode_) = [op, mode](CPU::Impl &cpu) {
+        for (const auto &opcode__ : opcodes) {
+          auto mode = ADDRESSING_MODES[modenum][opcode__ >> 2 & 7];
+          ary.at(opcode__) = [op, mode](CPU::Impl &cpu) {
             mode(cpu, true, false);
             op(cpu);
           };
@@ -755,10 +760,10 @@ const std::array<std::function<void(CPU::Impl &)>, 0x100> CPU::Impl::DISPATCH =
       auto op_w = [&](std::vector<uint8_t> opcodes,
                       std::function<void(CPU::Impl &)> op,
                       enum ADDRESSING_MODE modenum) {
-        for (const auto &opcode_ : opcodes) {
-          auto mode = ADDRESSING_MODES[modenum][opcode_ >> 2 & 7];
-          auto store = STORE[opcode_ >> 2 & 7];
-          ary.at(opcode_) = [op, mode, store](CPU::Impl &cpu) {
+        for (const auto &opcode__ : opcodes) {
+          auto mode = ADDRESSING_MODES[modenum][opcode__ >> 2 & 7];
+          auto store = STORE[opcode__ >> 2 & 7];
+          ary.at(opcode__) = [op, mode, store](CPU::Impl &cpu) {
             mode(cpu, false, true);
             op(cpu);
             store(cpu);
@@ -768,10 +773,10 @@ const std::array<std::function<void(CPU::Impl &)>, 0x100> CPU::Impl::DISPATCH =
       auto op_rw = [&](std::vector<uint8_t> opcodes,
                        std::function<void(CPU::Impl &)> op,
                        enum ADDRESSING_MODE modenum) {
-        for (const auto &opcode_ : opcodes) {
-          auto mode = ADDRESSING_MODES[modenum][opcode_ >> 2 & 7];
-          auto store = STORE[opcode_ >> 2 & 7];
-          ary.at(opcode_) = [op, mode, store](CPU::Impl &cpu) {
+        for (const auto &opcode__ : opcodes) {
+          auto mode = ADDRESSING_MODES[modenum][opcode__ >> 2 & 7];
+          auto store = STORE[opcode__ >> 2 & 7];
+          ary.at(opcode__) = [op, mode, store](CPU::Impl &cpu) {
             mode(cpu, true, true);
             op(cpu);
             store(cpu);
@@ -780,20 +785,20 @@ const std::array<std::function<void(CPU::Impl &)>, 0x100> CPU::Impl::DISPATCH =
       };
       auto op_a = [&](std::vector<uint8_t> opcodes,
                       std::function<void(CPU::Impl &)> op) {
-        for (const auto &opcode_ : opcodes) {
-          ary.at(opcode_) = [op](CPU::Impl &cpu) {
-            cpu.clk += CLK_2;
-            cpu.data = cpu._a;
+        for (const auto &opcode__ : opcodes) {
+          ary.at(opcode__) = [op](CPU::Impl &cpu) {
+            cpu.clk_ += CLK_2;
+            cpu.data_ = cpu._a_;
             op(cpu);
-            cpu._a = cpu.data;
+            cpu._a_ = cpu.data_;
           };
         }
       };
       auto op_n = [&](std::vector<uint8_t> opcodes, uint8_t ops, size_t ticks) {
-        for (const auto &opcode_ : opcodes) {
-          ary.at(opcode_) = [ops, ticks](CPU::Impl &cpu) {
-            cpu._pc += ops;
-            cpu.clk += ticks * RP2A03_CC;
+        for (const auto &opcode__ : opcodes) {
+          ary.at(opcode__) = [ops, ticks](CPU::Impl &cpu) {
+            cpu._pc_ += ops;
+            cpu.clk_ += ticks * RP2A03_CC;
           };
         }
       };
@@ -903,41 +908,41 @@ const std::array<std::function<void(CPU::Impl &)>, 0x100> CPU::Impl::DISPATCH =
 
 void CPU::Impl::reset() {
   // registers
-  this->_a = 0;
-  this->_x = 0;
-  this->_y = 0;
-  this->_sp = 0xfd;
-  this->_pc = 0xfffc;
+  this->_a_ = 0;
+  this->_x_ = 0;
+  this->_y_ = 0;
+  this->_sp_ = 0xfd;
+  this->_pc_ = 0xfffc;
   // P register
-  this->_p_nz = 1;
-  this->_p_c = 0;
-  this->_p_v = 0;
-  this->_p_i = 0x04;
-  this->_p_d = 0;
+  this->_p_nz_ = 1;
+  this->_p_c_ = 0;
+  this->_p_v_ = 0;
+  this->_p_i_ = 0x04;
+  this->_p_d_ = 0;
   // clocks
-  this->clk = 0;
-  this->clk_total = 0;
+  this->clk_ = 0;
+  this->clk_total_ = 0;
   // RAM
-  this->ram.fill(0xff);
+  this->ram_.fill(0xff);
   // memory mappings by self
   // 2KB internal RAM
   this->add_mappings(
       0x0000, 0x07ff,
-      [&](address_t addr_) -> uint8_t { return this->ram.at(addr_); },
-      [&](address_t addr_, uint8_t data_) { this->ram.at(addr_) = data_; });
+      [&](address_t addr) -> uint8_t { return this->ram_.at(addr); },
+      [&](address_t addr, uint8_t data) { this->ram_.at(addr) = data; });
   // Mirrors of $0000-$07FF
   this->add_mappings(
       0x0800, 0x1fff,
-      [&](address_t addr_) -> uint8_t { return this->ram.at(addr_ % 0x0800); },
-      [&](address_t addr_, uint8_t data_) {
-        this->ram.at(addr_ % 0x0800) = data_;
+      [&](address_t addr) -> uint8_t { return this->ram_.at(addr % 0x0800); },
+      [&](address_t addr, uint8_t data) {
+        this->ram_.at(addr % 0x0800) = data;
       });
   this->add_mappings(0x2000, 0xffff,
-                     [&](address_t addr_) -> uint8_t { return addr_ >> 8; },
+                     [&](address_t addr) -> uint8_t { return addr >> 8; },
                      [&](address_t, uint8_t) {});
   this->add_mappings(0xfffc, 0xfffc,
                      [&](address_t) -> uint8_t {
-                       this->_pc--;
+                       this->_pc_--;
                        return 0xfc;
                      },
                      [&](address_t, uint8_t) {});
@@ -949,63 +954,87 @@ void CPU::Impl::add_mappings(
     address_t begin, address_t end,
     const std::function<uint8_t(address_t addr)> &peek,
     const std::function<void(address_t addr, uint8_t data)> &poke) {
-  for (size_t addr_ = begin; addr_ <= end; ++addr_) {
-    this->fetch_.at(addr_) = peek;
-    this->store_.at(addr_) = poke;
+  for (size_t addr = begin; addr <= end; ++addr) {
+    this->fetch_.at(addr) = peek;
+    this->store_.at(addr) = poke;
   }
 }
 
-void CPU::Impl::sprite_dma(address_t addr_,
-                           std::array<uint8_t, 0x100> *sp_ram) {
-  for (size_t i = 0; i < 256; ++i) {
-    sp_ram->at(i) = this->ram.at(addr_ + i);
-  }
-  for (size_t i = 0; i < 64; ++i) {
-    sp_ram->at(i * 4 + 2) = 0xe3;
-  }
-}
-
-void CPU::Impl::steal_clocks(size_t clk_) { this->clk += clk_; }
+void CPU::Impl::steal_clocks(size_t clk) { this->clk_ += clk; }
 
 bool CPU::Impl::odd_clock() {
-  return ((this->clk_total + this->clk) % CLK_2) != 0;
+  return ((this->clk_total_ + this->clk_) % CLK_2) != 0;
 }
 
 size_t CPU::Impl::update() {
-  this->apu->clock_dma(this->clk);
-  return this->clk;
+  this->apu->clock_dma(this->clk_);
+  return this->clk_;
+}
+
+uint8_t CPU::Impl::dmc_dma(address_t addr) {
+  // This is inaccurate; it must steal *up to* 4 clocks dep}ing upon
+  // whether CPU writes in this clock, but this always steals 4 clocks.
+  this->clk_ += CLK_3;
+  auto dma_buffer = this->fetch(addr);
+  this->clk_ += CLK_1;
+  return dma_buffer;
+}
+
+void CPU::Impl::sprite_dma(address_t addr, std::array<uint8_t, 0x100> *sp_ram) {
+  for (size_t i = 0; i < 256; ++i) {
+    sp_ram->at(i) = this->ram_.at(addr + i);
+  }
+  for (size_t i = 0; i < 64; ++i) {
+    sp_ram->at(i * 4 + 2) &= 0xe3;
+  }
 }
 
 void CPU::Impl::boot() {
-  this->clk = CLK_7;
-  this->_pc = this->peek16(RESET_VECTOR);
+  this->clk_ = CLK_7;
+  this->_pc_ = this->peek16(RESET_VECTOR);
   // {
   //   std::cerr << "Use boot address: 0xC000 instead " << std::setw(4) <<
   //   std::hex
-  //             << this->_pc << std::endl;
-  //   this->_pc = 0xC000;
+  //             << this->_pc_ << std::endl;
+  //   this->_pc_ = 0xC000;
   // }
 }
 
 void CPU::Impl::vsync() {
-  if (this->ppu_sync) {
-    this->ppu->sync(this->clk);
+  if (this->ppu_sync_) {
+    this->ppu->sync(this->clk_);
   }
 
-  this->clk -= this->clk_frame;
-  this->clk_total += this->clk_frame;
+  this->clk_ -= this->clk_frame_;
+  this->clk_total_ += this->clk_frame_;
 
-  if (this->clk_nmi != FOREVER_CLOCK) {
-    this->clk_nmi -= this->clk_frame;
+  if (this->clk_nmi_ != FOREVER_CLOCK) {
+    this->clk_nmi_ -= this->clk_frame_;
   }
-  if (this->clk_irq != FOREVER_CLOCK) {
-    this->clk_irq -= std::min(this->clk_irq, this->clk_frame);
+  if (this->clk_irq_ != FOREVER_CLOCK) {
+    this->clk_irq_ -= std::min(this->clk_irq_, this->clk_frame_);
   }
 }
 
-void CPU::Impl::do_nmi(size_t clk_) {
-  if (this->clk_nmi == FOREVER_CLOCK) {
-    this->clk_nmi = this->next_interrupt_clock(clk_);
+uint8_t CPU::Impl::clear_irq(uint8_t line) {
+  uint8_t old_irq_flags = this->irq_flags_ & (IRQ_FRAME | IRQ_DMC);
+  this->irq_flags_ &= line ^ (IRQ_EXT | IRQ_FRAME | IRQ_DMC);
+  if (this->irq_flags_ == 0) {
+    this->clk_irq_ = FOREVER_CLOCK;
+  }
+  return old_irq_flags;
+}
+
+void CPU::Impl::do_irq(uint8_t line, size_t clk) {
+  this->irq_flags_ |= line;
+  if (this->clk_irq_ == FOREVER_CLOCK && this->_p_i_ == 0) {
+    this->clk_irq_ = next_interrupt_clock(clk);
+  }
+}
+
+void CPU::Impl::do_nmi(size_t clk) {
+  if (this->clk_nmi_ == FOREVER_CLOCK) {
+    this->clk_nmi_ = this->next_interrupt_clock(clk);
   }
 }
 
@@ -1013,29 +1042,29 @@ void CPU::Impl::run() {
   this->do_clock();
   do {
     do {
-      this->opcode = this->fetch(this->_pc);
+      this->opcode_ = this->fetch(this->_pc_);
 
       // std::cout << std::uppercase << std::setfill('0') << std::hex;
-      // std::cout << std::setw(4) << this->_pc << "  ";
-      // std::cout << std::setw(2) << +this->opcode << " "
-      // << "A:" << std::setw(2) << +this->_a << " "
-      // << "X:" << std::setw(2) << +this->_x << " "
-      // << "Y:" << std::setw(2) << +this->_y << " "
+      // std::cout << std::setw(4) << this->_pc_ << "  ";
+      // std::cout << std::setw(2) << +this->opcode_ << " "
+      // << "A:" << std::setw(2) << +this->_a_ << " "
+      // << "X:" << std::setw(2) << +this->_x_ << " "
+      // << "Y:" << std::setw(2) << +this->_y_ << " "
       // << "P:" << std::setw(2) << +this->flags_pack() << " "
-      // << "SP:" << std::setw(2) << +this->_sp << " "
+      // << "SP:" << std::setw(2) << +this->_sp_ << " "
       // << "CYC:" << std::setw(3) << std::dec << std::setfill(' ')
-      // << std::right << (this->clk - CLK_7) / 4 % 341 << std::endl;
+      // << std::right << (this->clk_ - CLK_7) / 4 % 341 << std::endl;
 
-      // std::cout << "[DEBUG] PC:";
-      // std::cout << std::uppercase << std::setfill('0') << std::hex;
-      // std::cout << std::setw(4) << this->_pc << " ";
-      // std::cout << "A:" << std::setw(2) << +this->_a << " "
-      //           << "X:" << std::setw(2) << +this->_x << " "
-      //           << "Y:" << std::setw(2) << +this->_y << " "
-      //           << "P:" << std::setw(2) << +this->flags_pack() << " "
-      //           << "SP:" << std::setw(2) << +this->_sp << " "
-      //           << "CYC:" << std::setw(3) << std::dec << std::setfill(' ')
-      //           << std::right << (this->clk) / 4 % 341 << std::endl;
+      std::cout << "[DEBUG] PC:";
+      std::cout << std::uppercase << std::setfill('0') << std::hex;
+      std::cout << std::setw(4) << this->_pc_ << " ";
+      std::cout << "A:" << std::setw(2) << +this->_a_ << " "
+                << "X:" << std::setw(2) << +this->_x_ << " "
+                << "Y:" << std::setw(2) << +this->_y_ << " "
+                << "P:" << std::setw(2) << +this->flags_pack() << " "
+                << "SP:" << std::setw(2) << +this->_sp_ << " "
+                << "CYC:" << std::setw(3) << std::dec << std::setfill(' ')
+                << std::right << (this->clk_) / 4 % 341 << std::endl;
 
       // if @conf.loglevel >= 3
       //   @conf.debug("PC:%04X A:%02X X:%02X Y:%02X P:%02X SP:%02X CYC:%3d :
@@ -1045,49 +1074,49 @@ void CPU::Impl::run() {
       //   ])
       // end
 
-      this->_pc++;
+      this->_pc_++;
 
-      DISPATCH.at(this->opcode)(*this);
+      DISPATCH.at(this->opcode_)(*this);
 
-      if (this->ppu_sync) {
-        this->ppu->sync(this->clk);
+      if (this->ppu_sync_) {
+        this->ppu->sync(this->clk_);
       }
-    } while (this->clk < this->clk_target);
+    } while (this->clk_ < this->clk_target_);
     this->do_clock();
-  } while (this->clk < this->clk_frame);
+  } while (this->clk_ < this->clk_frame_);
 }
 
-size_t CPU::Impl::next_interrupt_clock(size_t clk_) {
-  clk_ += CLK_1 + CLK_1 / 2; // interrupt edge
-  if (this->clk_target > clk_) {
-    this->clk_target = clk_;
+size_t CPU::Impl::next_interrupt_clock(size_t clk) {
+  clk += CLK_1 + CLK_1 / 2; // interrupt edge
+  if (this->clk_target_ > clk) {
+    this->clk_target_ = clk;
   }
-  return clk_;
+  return clk;
 }
 
 void CPU::Impl::do_isr(address_t vector) {
-  if (this->jammed) {
+  if (this->jammed_) {
     return;
   }
-  this->push16(this->_pc);
+  this->push16(this->_pc_);
   this->push8(this->flags_pack());
-  this->_p_i = 0x04;
-  this->clk += CLK_7;
-  auto addr_ =
+  this->_p_i_ = 0x04;
+  this->clk_ += CLK_7;
+  auto addr =
       (vector == NMI_VECTOR) ? NMI_VECTOR : this->fetch_irq_isr_vector();
-  this->_pc = this->peek16(addr_);
+  this->_pc_ = this->peek16(addr);
 }
 
 address_t CPU::Impl::fetch_irq_isr_vector() {
-  if (this->clk >= this->clk_frame) {
+  if (this->clk_ >= this->clk_frame_) {
     this->fetch(0x3000);
   }
-  if (this->clk_nmi != FOREVER_CLOCK) {
-    if (this->clk_nmi + CLK_2 <= this->clk) {
-      this->clk_nmi = FOREVER_CLOCK;
+  if (this->clk_nmi_ != FOREVER_CLOCK) {
+    if (this->clk_nmi_ + CLK_2 <= this->clk_) {
+      this->clk_nmi_ = FOREVER_CLOCK;
       return NMI_VECTOR;
     }
-    this->clk_nmi = this->clk + 1;
+    this->clk_nmi_ = this->clk_ + 1;
   }
   return IRQ_VECTOR;
 }
@@ -1095,22 +1124,22 @@ address_t CPU::Impl::fetch_irq_isr_vector() {
 void CPU::Impl::do_clock() {
   auto clock = this->apu->do_clock();
 
-  clock = std::min(clock, this->clk_frame);
+  clock = std::min(clock, this->clk_frame_);
 
-  if (this->clk < this->clk_nmi) {
-    clock = std::min(clock, this->clk_nmi);
-    if (this->clk < this->clk_irq) {
-      clock = std::min(clock, this->clk_irq);
+  if (this->clk_ < this->clk_nmi_) {
+    clock = std::min(clock, this->clk_nmi_);
+    if (this->clk_ < this->clk_irq_) {
+      clock = std::min(clock, this->clk_irq_);
     } else {
-      this->clk_irq = FOREVER_CLOCK;
+      this->clk_irq_ = FOREVER_CLOCK;
       this->do_isr(IRQ_VECTOR);
     }
   } else {
-    this->clk_nmi = FOREVER_CLOCK;
-    this->clk_irq = FOREVER_CLOCK;
+    this->clk_nmi_ = FOREVER_CLOCK;
+    this->clk_irq_ = FOREVER_CLOCK;
     this->do_isr(NMI_VECTOR);
   }
-  this->clk_target = clock;
+  this->clk_target_ = clock;
 }
 
 //==============================================================================
@@ -1129,23 +1158,33 @@ void CPU::add_mappings(
   this->p_->add_mappings(begin, end, peek, poke);
 }
 uint8_t CPU::fetch(address_t addr) { return this->p_->fetch(addr); }
-size_t CPU::current_clock() { return this->p_->clk; }
-size_t CPU::next_frame_clock() { return this->p_->clk_frame; }
+
+// other APIs
+size_t CPU::current_clock() { return this->p_->clk_; }
+size_t CPU::next_frame_clock() { return this->p_->clk_frame_; }
 void CPU::next_frame_clock(size_t clk) {
-  this->p_->clk_frame = clk;
-  if (clk < this->p_->clk_target) {
-    this->p_->clk_target = clk;
+  this->p_->clk_frame_ = clk;
+  if (clk < this->p_->clk_target_) {
+    this->p_->clk_target_ = clk;
   }
 }
 void CPU::steal_clocks(size_t clk) { this->p_->steal_clocks(clk); }
 bool CPU::odd_clock() { return this->p_->odd_clock(); }
 size_t CPU::update() { return this->p_->update(); }
+uint8_t CPU::dmc_dma(address_t addr) { return this->p_->dmc_dma(addr); }
 void CPU::sprite_dma(address_t addr, std::array<uint8_t, 0x100> *sp_ram) {
   this->p_->sprite_dma(addr, sp_ram);
 }
 void CPU::boot() { this->p_->boot(); }
 void CPU::vsync() { this->p_->vsync(); }
+
+// interrupts
+uint8_t CPU::clear_irq(uint8_t line) { this->p_->clear_irq(line); }
+void CPU::do_irq(uint8_t line, size_t clk) { this->p_->do_irq(line, clk); }
 void CPU::do_nmi(size_t clk) { this->p_->do_nmi(clk); }
+
+// default core
 void CPU::run() { this->p_->run(); }
+
 void CPU::setAPU(std::shared_ptr<APU> apu) { this->p_->apu = std::move(apu); }
 void CPU::setPPU(std::shared_ptr<PPU> ppu) { this->p_->ppu = std::move(ppu); }

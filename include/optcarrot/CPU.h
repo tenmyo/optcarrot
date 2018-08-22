@@ -12,9 +12,9 @@ class PPU;
 /// CPU implementation
 class CPU {
 public:
-  static constexpr auto IRQ_EXT = 0x01;
-  static constexpr auto IRQ_FRAME = 0x40;
-  static constexpr auto IRQ_DMC = 0x80;
+  static constexpr uint8_t IRQ_EXT = 0x01;
+  static constexpr uint8_t IRQ_FRAME = 0x40;
+  static constexpr uint8_t IRQ_DMC = 0x80;
 
   static constexpr auto CLK_1 = 1 * RP2A03_CC;
   static constexpr auto CLK_2 = 2 * RP2A03_CC;
@@ -51,14 +51,14 @@ public:
   void steal_clocks(size_t clk);
   bool odd_clock();
   size_t update();
-  // dmc_dma
+  uint8_t dmc_dma(address_t addr);
   void sprite_dma(address_t addr, std::array<uint8_t, 0x100> *sp_ram);
   void boot();
   void vsync();
 
   // interrupts
-  // clear_irq
-  // do_irq
+  uint8_t clear_irq(uint8_t line);
+  void do_irq(uint8_t line, size_t clk);
   void do_nmi(size_t clk);
 
   // default core
@@ -66,9 +66,6 @@ public:
 
   void setAPU(std::shared_ptr<APU> apu);
   void setPPU(std::shared_ptr<PPU> ppu);
-
-private:
-  // default core
 
 private:
   class Impl;

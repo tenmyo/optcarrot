@@ -52,7 +52,8 @@ private:
 
 NES::Impl::Impl(std::shared_ptr<Config> conf)
     : conf_(conf), video_(std::make_shared<SDL2Video>(conf)),
-      cpu_(std::make_shared<CPU>(conf)), apu_(APU::create(conf, this->cpu_)),
+      cpu_(std::make_shared<CPU>(conf)),
+      apu_(APU::create(conf, this->cpu_, 44100, 16)),
       ppu_(PPU::create(conf, this->cpu_, &this->video_->Palette)),
       rom_(ROM::load(conf, this->ppu_)), pads_(std::make_shared<Pads>(conf)),
       frame_(0), frame_target_(conf_->Frames) {

@@ -10,10 +10,12 @@ class CPU;
 class APU {
 public:
   static std::shared_ptr<APU> create(const std::shared_ptr<Config> &conf,
-                                     std::shared_ptr<CPU> cpu);
+                                     std::shared_ptr<CPU> cpu, uint16_t rate,
+                                     uint16_t bits);
 
 private:
-  explicit APU(const std::shared_ptr<Config> &conf, std::shared_ptr<CPU> cpu);
+  explicit APU(const std::shared_ptr<Config> &conf, std::shared_ptr<CPU> cpu,
+               uint16_t rate, uint16_t bits);
 
 public:
   ~APU();
