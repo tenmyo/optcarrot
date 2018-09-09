@@ -1,6 +1,7 @@
 #ifndef OPTCARROT_APU_H
 #define OPTCARROT_APU_H
 #include <memory>
+#include <vector>
 
 namespace optcarrot {
 class Config;
@@ -29,6 +30,7 @@ public:
   void reset();
 
   // other APIs
+  const std::vector<uint16_t> &output();
   size_t do_clock();
   void clock_dma(size_t clk);
   void update();

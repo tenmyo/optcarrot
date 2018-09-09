@@ -8,8 +8,6 @@ class Config;
 /// NES emulation main
 class NES {
 public:
-  static constexpr auto kFPS = 60;
-
   explicit NES(std::shared_ptr<Config> conf);
   ~NES() noexcept;
   // disallow copy

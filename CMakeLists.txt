@@ -25,7 +25,7 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib)
 
 # Find SDL
 include(FindPkgConfig)
-pkg_search_module(SDL2 REQUIRED sdl2 sdl>=2.0.0)
+pkg_search_module(SDL2 REQUIRED sdl2 sdl>=2.0.4)# SDL_QueueAudio
 pkg_search_module(SDL2IMAGE REQUIRED SDL2_image SDL_image>=2.0.0)
 
 # Build library

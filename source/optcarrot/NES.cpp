@@ -62,8 +62,6 @@ NES::Impl::Impl(std::shared_ptr<Config> conf)
   // @ppu = @cpu.ppu = PPU.new(@conf, @cpu, @video.palette)
   // @rom  = ROM.load(@conf, @cpu, @ppu)
   // @pads = Pads.new(@conf, @cpu, @apu)
-
-  // @fps_history = [] if @conf.print_fps_history
 }
 
 NES::Impl::~Impl() {
@@ -109,16 +107,13 @@ void NES::Impl::step() { // TODO(tenmyo): NES::Impl::step
   this->ppu_->setup_frame();
   this->cpu_->run();
   this->ppu_->vsync();
-  // @apu.vsync
+  this->apu_->vsync();
   this->cpu_->vsync();
   this->rom_->vsync();
 
-  //@input.tick(@frame, @pads)
-  // this->fps_ = this->video_->tick(this->ppu_->output_pixels());
-#if 0
-  @fps_history << @fps if @conf.print_fps_history
-  @audio.tick(@apu.output)
-#endif
+  this->input_->tick(this->frame_, this->pads_);
+  this->fps_ = this->video_->tick(this->ppu_->output_pixels());
+  this->audio_->tick(this->apu_->output());
 
   this->frame_++;
   // @conf.info("frame #{ @frame }") if @conf.loglevel >= 2

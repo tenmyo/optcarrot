@@ -8,6 +8,7 @@
 #include <iostream>
 
 namespace optcarrot {
+constexpr auto FPS = 60;
 constexpr auto FOREVER_CLOCK = 0xffffffff;
 constexpr auto RP2A03_CC = 12;
 

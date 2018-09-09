@@ -257,7 +257,7 @@ private:
     for (size_t j = 0; j < ary.size(); j++) {
       const auto n = ary.at(j);
       for (size_t i = 0; i < 8; i++) {
-        ret.at(j).at(i) = bit(n, i) * 0x1f;
+        ret.at(j).at(i) = static_cast<int>(bit(n, i)) * 0x1f;
       }
     }
     return ret;
@@ -565,13 +565,12 @@ public:
       return static_cast<uint16_t>(
           (sum * this->envelope_->output() + this->rate_ / 2) / this->rate_ *
           2);
-    } else {
-      while (this->timer_ < 0) {
-        this->bits_ = this->shifter_->at(this->bits_);
-        this->timer_ += this->freq_;
-      }
-      return 0;
     }
+    while (this->timer_ < 0) {
+      this->bits_ = this->shifter_->at(this->bits_);
+      this->timer_ += this->freq_;
+    }
+    return 0;
   }
 
 private:
@@ -801,6 +800,7 @@ public:
   // initialization
   void reset(bool mapping = true);
   // other APIs
+  const std::vector<uint16_t> &output();
   size_t do_clock();
   void clock_dma(size_t clk);
   void update(size_t target);
@@ -839,7 +839,7 @@ private:
   size_t frame_irq_clock_{0};
   size_t frame_irq_repeat_{0};
   size_t dmc_clock_{0};
-  const std::array<size_t, 4> *oscillator_clocks_;
+  const std::array<size_t, 4> *oscillator_clocks_{};
 };
 
 APU::Impl::Impl(APU &apu, std::shared_ptr<CPU> cpu, uint16_t rate,
@@ -849,7 +849,7 @@ APU::Impl::Impl(APU &apu, std::shared_ptr<CPU> cpu, uint16_t rate,
       mixer_(pulse_0_, pulse_1_, triangle_, noise_, dmc_), settings_rate_{
                                                                rate} {
   assert(rate >= 10050);
-  assert(bit(bits, 8) || bit(bits, 16));
+  assert((bits == 8) || (bits == 16));
 
   this->output_.reserve(rate);
   this->buffer_.reserve(rate);
@@ -877,6 +877,8 @@ void APU::Impl::reset(bool mapping) {
   this->buffer_.clear();
   this->oscillator_clocks_ = &OSCILLATOR_CLOCKS.at(0);
 }
+
+const std::vector<uint16_t> &APU::Impl::output() { return this->output_; }
 
 size_t APU::Impl::do_clock() {
   this->clock_dma(this->cpu_->current_clock());
@@ -1132,7 +1134,7 @@ std::shared_ptr<APU> APU::create(const std::shared_ptr<Config> &conf,
   struct impl : APU {
     explicit impl(const std::shared_ptr<Config> &conf, std::shared_ptr<CPU> cpu,
                   uint16_t rate, uint16_t bits)
-        : APU(std::move(conf), std::move(cpu), rate, bits) {}
+        : APU(conf, std::move(cpu), rate, bits) {}
   };
   auto self = std::make_shared<impl>(conf, cpu, rate, bits);
   cpu->setAPU(self);
@@ -1145,6 +1147,7 @@ APU::~APU() = default;
 
 void APU::reset() { this->p_->reset(); }
 
+const std::vector<uint16_t> &APU::output() { return this->p_->output(); }
 size_t APU::do_clock() { return this->p_->do_clock(); }
 void APU::clock_dma(size_t clk) { this->p_->clock_dma(clk); }
 void APU::update() { this->p_->update(); }

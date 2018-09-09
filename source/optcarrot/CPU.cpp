@@ -1179,7 +1179,7 @@ void CPU::boot() { this->p_->boot(); }
 void CPU::vsync() { this->p_->vsync(); }
 
 // interrupts
-uint8_t CPU::clear_irq(uint8_t line) { this->p_->clear_irq(line); }
+uint8_t CPU::clear_irq(uint8_t line) { return this->p_->clear_irq(line); }
 void CPU::do_irq(uint8_t line, size_t clk) { this->p_->do_irq(line, clk); }
 void CPU::do_nmi(size_t clk) { this->p_->do_nmi(clk); }
 
